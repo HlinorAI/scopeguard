@@ -21,6 +21,8 @@ Date: 2026-08-01
 - Review action changes a finding to `Reviewed` and updates the unreviewed metric.
 - Run analysis moves through `Analysing…` and returns to `Analysis complete`.
 - Visible `browse` upload control accepts a non-sensitive QA fixture and adds its filename to the source list.
+- Two local fixtures (scope TXT + message JSON) are classified, imported and used to recompute findings and metrics after `Run analysis`.
+- Unsupported PDF input is rejected with a visible, actionable error and does not enter the source list.
 - Console error and warning logs were empty during the tested flows.
 - No external images or broken media are used.
 
@@ -28,6 +30,7 @@ Date: 2026-08-01
 
 - Added the missing React mount call in `src/main.tsx`; the initial build succeeded but the browser was blank because `App` was not rendered into `#root`.
 - Added React type declarations and the Vite client declaration so typecheck is meaningful.
+- Fixed source classification so message exports whose filenames contain the product name `scopeguard` are not mistaken for scope documents.
 
 ## Remaining prototype limitations
 

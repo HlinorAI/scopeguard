@@ -1,81 +1,21 @@
 import { useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { createRoot } from 'react-dom/client'
+import { analyzeSources, demoSources, parseSourceFile } from './analysis'
+import type { Finding, SourceDocument } from './analysis'
 import './styles.css'
-
-type Finding = {
-  id: string
-  type: string
-  title: string
-  excerpt: string
-  source: string
-  scope: string
-  hours: string
-  confidence: number
-  severity: 'high' | 'medium' | 'low'
-  reviewed: boolean
-}
-
-const initialFindings: Finding[] = [
-  {
-    id: 'SG-014',
-    type: 'NEW DELIVERABLE',
-    title: 'Partner dashboard is not in the agreed scope',
-    excerpt: '“Can we also add a lightweight dashboard for partners before launch?”',
-    source: 'Slack · #acme-launch · 14 May, 10:42',
-    scope: 'SOW §2.1 · Public marketing site',
-    hours: '32–40h',
-    confidence: 94,
-    severity: 'high',
-    reviewed: false,
-  },
-  {
-    id: 'SG-011',
-    type: 'ACCEPTANCE CRITERIA',
-    title: '“Real-time” status changes the delivery expectation',
-    excerpt: '“The status should update instantly without refreshing the page.”',
-    source: 'Email · Alex → Studio · 13 May, 16:08',
-    scope: 'SOW §3.2 · Daily status sync',
-    hours: '8–12h',
-    confidence: 82,
-    severity: 'medium',
-    reviewed: false,
-  },
-  {
-    id: 'SG-008',
-    type: 'EXTRA REVISION',
-    title: 'Fourth revision round requested on homepage',
-    excerpt: '“One last pass on the headline and hero direction, then we are done.”',
-    source: 'Slack · #acme-launch · 12 May, 09:17',
-    scope: 'SOW §4.4 · Two revision rounds',
-    hours: '4–6h',
-    confidence: 98,
-    severity: 'high',
-    reviewed: true,
-  },
-  {
-    id: 'SG-005',
-    type: 'UNPRICED COMMITMENT',
-    title: 'Analytics implementation was promised in a follow-up',
-    excerpt: '“We will make sure the new funnel is tracked end to end.”',
-    source: 'Email · Studio → Alex · 09 May, 11:24',
-    scope: 'No matching clause found',
-    hours: '6–10h',
-    confidence: 71,
-    severity: 'medium',
-    reviewed: false,
-  },
-]
-
 const projectNames = ['Acme launch site', 'Northstar rebrand', 'Wavelength app']
+const initialAnalysis = analyzeSources(demoSources)
 
 function App() {
   const [activeProject, setActiveProject] = useState(projectNames[0])
   const [filter, setFilter] = useState<'all' | 'high' | 'unreviewed'>('all')
-  const [findings, setFindings] = useState(initialFindings)
+  const [findings, setFindings] = useState<Finding[]>(initialAnalysis.findings)
+  const [sources, setSources] = useState<SourceDocument[]>(demoSources)
+  const [analysis, setAnalysis] = useState(initialAnalysis)
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [analysisReady, setAnalysisReady] = useState(true)
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>(['Acme_SOW_v3.pdf', 'acme-slack-export.json'])
+  const [sourceError, setSourceError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -85,25 +25,44 @@ function App() {
     return findings
   }, [filter, findings])
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return
-    setUploadedFiles((current) => [...current, ...Array.from(files).map((file) => file.name)])
+    const parsed = await Promise.all(Array.from(files).map(async (file) => {
+      try {
+        return { source: await parseSourceFile(file) }
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : `${file.name}: could not parse this source` }
+      }
+    }))
+    const nextSources = parsed.flatMap((result) => result.source ? [result.source] : [])
+    const errors = parsed.flatMap((result) => result.error ? [result.error] : [])
+    if (nextSources.length) setSources((current) => [...current, ...nextSources])
+    setSourceError(errors.length ? errors.join(' ') : null)
     setAnalysisReady(false)
   }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    handleFiles(event.target.files)
+    void handleFiles(event.target.files)
     event.target.value = ''
   }
 
   const runAnalysis = () => {
-    if (uploadedFiles.length < 2) return
+    if (sources.length < 2) {
+      setSourceError('Add one scope document and one communication export before running analysis.')
+      return
+    }
     setIsAnalysing(true)
     setAnalysisReady(false)
     window.setTimeout(() => {
+      const nextAnalysis = analyzeSources(sources)
+      setAnalysis(nextAnalysis)
+      setFindings((current) => nextAnalysis.findings.map((finding) => ({
+        ...finding,
+        reviewed: current.find((previous) => previous.id === finding.id)?.reviewed ?? false,
+      })))
       setIsAnalysing(false)
       setAnalysisReady(true)
-    }, 1200)
+    }, 350)
   }
 
   const toggleReviewed = (id: string) => {
@@ -172,8 +131,8 @@ function App() {
           </section>
 
           <section className="status-strip" aria-label="Analysis status">
-            <div className="status-intro"><span className={`status-icon ${analysisReady ? 'ready' : ''}`}>{analysisReady ? '✓' : '…'}</span><div><strong>{analysisReady ? 'Analysis complete' : 'Ready to analyse'}</strong><span>{analysisReady ? 'Compared 38 messages against 12 scope items' : 'Add a scope document and a communication export'}</span></div></div>
-            <div className="status-metrics"><div><span>Scope coverage</span><strong>92%</strong></div><div><span>Hours at risk</span><strong className="orange-text">50–68h</strong></div><div><span>Unreviewed</span><strong>{findings.filter((finding) => !finding.reviewed).length}</strong></div></div>
+            <div className="status-intro"><span className={`status-icon ${analysisReady ? 'ready' : ''}`}>{analysisReady ? '✓' : '…'}</span><div><strong>{analysisReady ? 'Analysis complete' : 'Ready to analyse'}</strong><span>{analysisReady ? `Compared ${analysis.messagesCompared} messages against ${analysis.scopeItemsCount} scope items` : `${sources.length} source${sources.length === 1 ? '' : 's'} loaded · Run analysis to compare them`}</span></div></div>
+            <div className="status-metrics"><div><span>Scope coverage</span><strong>{analysis.scopeCoverage}%</strong></div><div><span>Hours at risk</span><strong className="orange-text">{analysis.hoursAtRisk}</strong></div><div><span>Unreviewed</span><strong>{findings.filter((finding) => !finding.reviewed).length}</strong></div></div>
           </section>
 
           <section className="workspace-grid">
@@ -186,12 +145,13 @@ function App() {
             </div>
 
             <aside className="source-panel">
-              <div className="section-heading source-heading"><div><p className="eyebrow">PROJECT SOURCES</p><h2>What we compared</h2></div><span className="source-count">{uploadedFiles.length}/04</span></div>
-              <div className="source-list">{uploadedFiles.map((file, index) => <div className="source-file" key={`${file}-${index}`}><span className={`file-icon ${file.endsWith('.pdf') ? 'pdf' : 'json'}`}>{file.endsWith('.pdf') ? 'PDF' : 'JSON'}</span><div><strong>{file}</strong><small>{file.endsWith('.pdf') ? 'Scope document · 1.2 MB' : 'Communication export · 486 KB'}</small></div><span className="file-check">✓</span></div>)}</div>
+              <div className="section-heading source-heading"><div><p className="eyebrow">PROJECT SOURCES</p><h2>What we compared</h2></div><span className="source-count">{sources.length}/04</span></div>
+              <div className="source-list">{sources.map((source) => <div className="source-file" key={source.id}><span className={`file-icon ${source.kind === 'scope' ? 'pdf' : 'json'}`}>{source.format.toUpperCase()}</span><div><strong>{source.name}</strong><small>{sourceKindLabel(source.kind)} · local source</small></div><span className="file-check">✓</span></div>)}</div>
               <div className={`drop-zone ${isDragging ? 'is-dragging' : ''}`} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFiles(event.dataTransfer.files) }}>
-                <input accept=".pdf,.txt,.md,.eml,.json,.docx" className="visually-hidden" onChange={handleFileChange} ref={fileInput} type="file" multiple />
-                <span className="upload-symbol">+</span><strong>Add a source</strong><small>Drop files here or <button onClick={() => fileInput.current?.click()} type="button">browse</button></small>
+                <input accept=".txt,.md,.eml,.json" className="visually-hidden" onChange={handleFileChange} ref={fileInput} type="file" multiple />
+                <span className="upload-symbol">+</span><strong>Add a source</strong><small>TXT, MD, EML or JSON · <button onClick={() => fileInput.current?.click()} type="button">browse</button></small>
               </div>
+              {sourceError && <div className="source-error" role="alert">{sourceError}</div>}
               <div className="privacy-callout"><span>◆</span><div><strong>Private by default</strong><p>Files are processed locally in this prototype. No client data leaves your workspace.</p></div></div>
             </aside>
           </section>
@@ -209,6 +169,12 @@ function FindingCard({ finding, onToggleReviewed }: { finding: Finding; onToggle
     <div className="finding-meta"><span><b>Source</b>{finding.source}</span><span><b>Scope basis</b>{finding.scope}</span></div>
     <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div><button className={`review-button ${finding.reviewed ? 'done' : ''}`} onClick={() => onToggleReviewed(finding.id)} type="button">{finding.reviewed ? 'Reviewed ✓' : 'Review finding →'}</button></div>
   </article>
+}
+
+function sourceKindLabel(kind: SourceDocument['kind']): string {
+  if (kind === 'scope') return 'Scope document'
+  if (kind === 'messages') return 'Communication export'
+  return 'Unclassified source'
 }
 
 export default App

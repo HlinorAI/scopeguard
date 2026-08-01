@@ -13,4 +13,4 @@ npm run dev
 
 ## Current status
 
-The repository contains the first responsive product surface with demo findings, source upload interaction and review states. Parsing, rules and persistence are the next slice.
+The repository contains a responsive product surface, local source ingestion for TXT/MD/EML/JSON, deterministic scope-drift rules and review states. PDF/DOCX adapters, persistence and model-assisted extraction are the next slice.
