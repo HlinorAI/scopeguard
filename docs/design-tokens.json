@@ -1,0 +1,16 @@
+{
+  "color": {
+    "paper": "#F4F1EB",
+    "paperDeep": "#EBE7DF",
+    "ink": "#252521",
+    "muted": "#817E74",
+    "line": "#D9D4CA",
+    "accent": "#E7643F",
+    "accentDark": "#C84D2E",
+    "sage": "#718B75",
+    "white": "#FFFDFA"
+  },
+  "radius": { "control": "8px", "panel": "12px" },
+  "spacing": { "unit": "4px", "pageMax": "1210px" },
+  "motion": { "standard": "180ms ease", "reducedMotion": true }
+}
