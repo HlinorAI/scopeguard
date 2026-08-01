@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
+import { createRoot } from 'react-dom/client'
 import './styles.css'
 
 type Finding = {
@@ -211,3 +212,5 @@ function FindingCard({ finding, onToggleReviewed }: { finding: Finding; onToggle
 }
 
 export default App
+
+createRoot(document.getElementById('root')!).render(<App />)
