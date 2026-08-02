@@ -25,7 +25,7 @@ The product has two distinct surfaces:
 1. **Hosted user-facing app** — for finance, sales, account and delivery teams. It must work in a browser with a shared link, sign-in and no terminal usage.
 2. **Open-source repository** — for developers, contributors and technical operators who inspect, extend or self-host the core.
 
-Finance and sales users are not expected to use GitHub, Node.js or npm. The current local Vite app is a development surface only. The next product slice is an invite-only hosted pilot.
+Finance and sales users are not expected to use GitHub, Node.js or npm. The hosted browser pilot is now available at https://scopeguard.atvbox.chatgpt.site. The current release is private, local-first and intentionally limited: it does not yet persist projects, decisions or team history.
 
 ## 2. How the current MVP works
 
@@ -203,7 +203,7 @@ This is the next commercial layer after the Slack/Gmail/WhatsApp pilot.
 ## 7. Not implemented yet
 
 - Direct Slack, Gmail and WhatsApp integrations are planned as the next open-source pilot slice; export adapters are already available.
-- Hosted browser deployment with sign-in and invite-based access.
+- Multi-user invites, persistent workspaces and team access controls.
 - Persistent project, source and review storage.
 - Backend and authentication.
 - Persistent storage after a page reload.
@@ -285,8 +285,8 @@ npm run build
 - Main branch: `main`.
 - Working branch: `agent/scopeguard-foundation`.
 - PR #1 is merged into `main`.
-- Release `v0.1.0` is public.
-- The repository contains the product foundation, ingestion, review workflow, pilot adapters, CI and tests.
+- Release `v0.2.0` is public.
+- The repository contains the product foundation, ingestion, review workflow, pilot adapters, onboarding tour, CI and tests.
 
 ## 12. Run locally
 

@@ -48,7 +48,7 @@ ScopeGuard has two separate surfaces:
 1. **The user-facing product** — a hosted browser app for finance, sales, account and delivery teams. These users should open a link, sign in and work with projects without installing software or using a terminal.
 2. **The open-source repository** — the inspectable product core for developers, contributors and technical operators.
 
-The GitHub repository is not the intended daily interface for finance or sales. The current local Vite app is a development surface; an invite-only hosted pilot is the next product-delivery step.
+The GitHub repository is not the intended daily interface for finance or sales. The hosted pilot is available at [scopeguard.atvbox.chatgpt.site](https://scopeguard.atvbox.chatgpt.site); the local Vite app below remains the developer and self-hosting surface.
 
 ## How to use the app
 
@@ -63,7 +63,7 @@ The target end-user experience is:
 5. Review findings and decide whether each item is in scope or needs a change request.
 6. Export or share the review with sales, finance and delivery.
 
-The hosted pilot is not deployed yet. Until it is available, contributors can run the local development surface below.
+The hosted pilot is live as a private early browser release. It is local-first: uploaded content is processed in the browser and the current pilot does not persist projects or decisions after a page reload. Contributors can run the local development surface below.
 
 ### 1. Clone and start the local app
 
@@ -333,4 +333,4 @@ ScopeGuard is an early product prototype. The foundation is intentionally local-
 
 For the current product boundary, pilot plan and open-source/private add-on split, see [`docs/product-status.md`](docs/product-status.md).
 
-The repository is public under the [Apache License 2.0](LICENSE). Release `v0.1.0` contains the open-source export-based pilot foundation.
+The repository is public under the [Apache License 2.0](LICENSE). Release `v0.2.0` contains the open-source export-based pilot foundation, hosted deployment adapter and first-run onboarding tour.
