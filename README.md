@@ -43,7 +43,16 @@ The analyzer uses “potential” language deliberately. A rule is a signal, not
 
 ## How to use the app
 
-### 1. Start the local app
+### 1. Clone and start the local app
+
+If you have not cloned the repository yet:
+
+```bash
+git clone https://github.com/HlinorAI/scopeguard.git
+cd scopeguard
+```
+
+If the repository is already on your machine, skip the clone step and change into its directory.
 
 ```bash
 npm install
@@ -273,6 +282,12 @@ npm run dev
 # type-check and create a production build
 npm run build
 
+# run unit tests
+npm test
+
+# run typecheck only
+npm run typecheck
+
 # serve the production build locally
 npm run preview
 ```
@@ -286,7 +301,7 @@ The next useful steps are:
 3. Persist projects, sources, findings, notes and decisions in local SQLite or another explicit local store.
 4. Turn a `Change request` decision into an editable, exportable draft.
 5. Improve clause matching and conversation context.
-6. Finish and test the open-source Slack/Gmail/WhatsApp pilot connectors.
+6. Add optional live OAuth/API connectors for Slack, Gmail and WhatsApp after the export-based pilot.
 7. Add private CRM/ERP, mailbox and project-management add-ons via approved APIs.
 8. Add optional model-assisted extraction behind an explicit privacy boundary; deterministic evidence and human review should remain the source of truth.
 
@@ -296,4 +311,4 @@ ScopeGuard is an early product prototype. The foundation is intentionally local-
 
 For the current product boundary, pilot plan and open-source/private add-on split, see [`docs/product-status.md`](docs/product-status.md).
 
-The repository is licensed under the [Apache License 2.0](LICENSE) and is being prepared for a public open-source release.
+The repository is public under the [Apache License 2.0](LICENSE). Release `v0.1.0` contains the open-source export-based pilot foundation.

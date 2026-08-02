@@ -264,7 +264,7 @@ npm run build
 4. Add a local or server-side persistence layer for projects and decisions.
 5. Run a pilot with Slack, Gmail and WhatsApp exports.
 6. Measure finding accuracy and the number of resulting change requests.
-7. Finish and test the open-source Slack/Gmail/WhatsApp connector package.
+7. Add optional live OAuth/API connectors for Slack, Gmail and WhatsApp after the export-based pilot.
 8. Add CRM/ERP as separate paid add-ons after the core value is validated.
 
 ## 11. Repository status
@@ -273,13 +273,15 @@ npm run build
 - License: Apache License 2.0.
 - Main branch: `main`.
 - Working branch: `agent/scopeguard-foundation`.
-- A draft PR already exists.
-- The latest published version contains the product foundation, ingestion and review workflow.
-- The latest documentation and product-boundary changes are local and require a separate commit/push.
+- PR #1 is merged into `main`.
+- Release `v0.1.0` is public.
+- The repository contains the product foundation, ingestion, review workflow, pilot adapters, CI and tests.
 
 ## 12. Run locally
 
 ```bash
+git clone https://github.com/HlinorAI/scopeguard.git
+cd scopeguard
 npm install
 npm run dev
 ```
