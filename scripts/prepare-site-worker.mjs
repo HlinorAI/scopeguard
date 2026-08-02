@@ -17,8 +17,8 @@ const htmlTemplate = await readFile(htmlPath, 'utf8')
 const script = (await readFile(scriptPath, 'utf8')).replaceAll('</script', '<\\/script')
 const styles = await readFile(stylePath, 'utf8')
 const html = htmlTemplate
-  .replace(new RegExp(`<script type="module" crossorigin src="/assets/${scriptFile}"></script>`), `<script type="module">${script}</script>`)
-  .replace(new RegExp(`<link rel="stylesheet" crossorigin href="/assets/${styleFile}">`), `<style>${styles}</style>`)
+  .replace(new RegExp(`<script type="module" crossorigin src="/assets/${scriptFile}"></script>`), () => `<script type="module">${script}</script>`)
+  .replace(new RegExp(`<link rel="stylesheet" crossorigin href="/assets/${styleFile}">`), () => `<style>${styles}</style>`)
 
 const worker = `const html = ${JSON.stringify(html)}
 
