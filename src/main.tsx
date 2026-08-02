@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { analyzeSources, demoSources, parseSourceFile } from './analysis'
@@ -6,6 +6,7 @@ import type { Finding, SourceDocument } from './analysis'
 import './styles.css'
 const projectNames = ['Acme launch site', 'Northstar rebrand', 'Wavelength app']
 const initialAnalysis = analyzeSources(demoSources)
+const tourStorageKey = 'scopeguard-onboarding-complete'
 
 function App() {
   const [activeProject, setActiveProject] = useState(projectNames[0])
@@ -19,6 +20,8 @@ function App() {
   const [reviewingId, setReviewingId] = useState<string | null>(null)
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [isDragging, setIsDragging] = useState(false)
+  const [isTourOpen, setIsTourOpen] = useState(() => !hasCompletedTour())
+  const [tourStep, setTourStep] = useState(0)
   const fileInput = useRef<HTMLInputElement>(null)
 
   const visibleFindings = useMemo(() => {
@@ -132,17 +135,17 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs"><span>Projects</span><b>/</b><strong>{activeProject}</strong></div>
-          <div className="topbar-actions"><span className="saved-status"><i /> Saved locally</span><button className="help-button" type="button" aria-label="Help">?</button></div>
+          <div className="topbar-actions"><span className="saved-status"><i /> Saved locally</span><button className="help-button" onClick={() => { setTourStep(0); setIsTourOpen(true) }} type="button" aria-label="Replay onboarding tour" title="Replay onboarding tour">?</button></div>
         </header>
 
         <div className="content-wrap">
-          <section className="page-intro">
+          <section className="page-intro" data-tour="intro">
             <div>
               <p className="eyebrow">PROJECT REVIEW · 14 MAY 2026</p>
               <h1>Keep the work<br /><em>inside the lines.</em></h1>
               <p className="intro-copy">ScopeGuard compares what was agreed with what is now being asked — before the margin disappears.</p>
             </div>
-            <div className="intro-actions"><button className="quiet-button" type="button">Export report <span>↗</span></button><button className="primary-button" onClick={runAnalysis} type="button">{isAnalysing ? 'Analysing…' : 'Run analysis'} <span>→</span></button></div>
+            <div className="intro-actions"><button className="quiet-button" type="button">Export report <span>↗</span></button><button className="primary-button" data-tour="analysis" onClick={runAnalysis} type="button">{isAnalysing ? 'Analysing…' : 'Run analysis'} <span>→</span></button></div>
           </section>
 
           <section className="status-strip" aria-label="Analysis status">
@@ -151,7 +154,7 @@ function App() {
           </section>
 
           <section className="workspace-grid">
-            <div className="evidence-column">
+            <div className="evidence-column" data-tour="findings">
               <div className="section-heading"><div><p className="eyebrow">EVIDENCE REVIEW</p><h2>Potential scope drift</h2></div><div className="filter-tabs" role="tablist" aria-label="Finding filters">{(['all', 'high', 'unreviewed'] as const).map((item) => <button className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} role="tab" type="button">{item === 'all' ? 'All findings' : item === 'high' ? 'High risk' : 'Unreviewed'}</button>)}</div></div>
               <div className="finding-list">
                 {visibleFindings.map((finding) => <FindingCard
@@ -168,7 +171,7 @@ function App() {
               </div>
             </div>
 
-            <aside className="source-panel">
+            <aside className="source-panel" data-tour="sources">
               <div className="section-heading source-heading"><div><p className="eyebrow">PROJECT SOURCES</p><h2>What we compared</h2></div><span className="source-count">{sources.length}/04</span></div>
               <div className="source-list">{sources.map((source) => <div className="source-file" key={source.id}><span className={`file-icon ${source.kind === 'scope' ? 'pdf' : 'json'}`}>{source.format.toUpperCase()}</span><div><strong>{source.name}</strong><small>{sourceKindLabel(source.kind)} · local source</small></div><span className="file-check">✓</span></div>)}</div>
               <div className={`drop-zone ${isDragging ? 'is-dragging' : ''}`} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFiles(event.dataTransfer.files) }}>
@@ -176,11 +179,12 @@ function App() {
                 <span className="upload-symbol">+</span><strong>Add a source</strong><small>TXT, MD, EML or JSON · <button onClick={() => fileInput.current?.click()} type="button">browse</button></small>
               </div>
               {sourceError && <div className="source-error" role="alert">{sourceError}</div>}
-              <div className="privacy-callout"><span>◆</span><div><strong>Private by default</strong><p>Files are processed locally in this prototype. No client data leaves your workspace.</p></div></div>
+              <div className="privacy-callout" data-tour="privacy"><span>◆</span><div><strong>Private by default</strong><p>Files are processed locally in this prototype. No client data leaves your workspace.</p></div></div>
             </aside>
           </section>
         </div>
       </main>
+      <OnboardingTour isOpen={isTourOpen} onClose={() => { setIsTourOpen(false); markTourComplete() }} onStepChange={setTourStep} stepIndex={tourStep} />
     </div>
   )
 }
@@ -207,9 +211,93 @@ function FindingCard({
     <h3>{finding.title}</h3>
     <blockquote>{finding.excerpt}</blockquote>
     <div className="finding-meta"><span><b>Source</b>{finding.source}</span><span><b>Scope basis</b>{finding.scope}</span></div>
-    <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
+    <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" data-tour="review-action" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
     {isReviewing && !finding.reviewed && <div className="review-panel"><label htmlFor={`review-note-${finding.id}`}>Decision note <span>optional</span></label><textarea id={`review-note-${finding.id}`} onChange={(event) => onNoteChange(event.target.value)} placeholder="Why should the team act on this finding?" value={note} /><div className="review-actions"><button className="in-scope-button" onClick={() => onDecide(finding.id, 'in_scope')} type="button">Mark in scope</button><button className="change-request-button" onClick={() => onDecide(finding.id, 'change_request')} type="button">Create change request <span>→</span></button></div></div>}
   </article>
+}
+
+type TourStep = {
+  target: string
+  title: string
+  body: string
+}
+
+const tourSteps: TourStep[] = [
+  { target: 'intro', title: 'Start with the scope', body: 'ScopeGuard compares what was agreed with what clients later ask for. Demo evidence is already loaded so you can see the workflow immediately.' },
+  { target: 'sources', title: 'Add the source files', body: 'Upload one scope document and exports from Slack, Gmail or WhatsApp. In this pilot, files are parsed locally in the browser.' },
+  { target: 'analysis', title: 'Run the analysis', body: 'When your sources are ready, click Run analysis. ScopeGuard highlights potential scope drift and estimates the exposure.' },
+  { target: 'findings', title: 'Read the evidence', body: 'Each finding includes the client quote, original source and scope basis. Start with High risk or Unreviewed.' },
+  { target: 'review-action', title: 'Make a decision', body: 'Open a finding, leave an optional note, then mark it In scope or Create change request.' },
+  { target: 'privacy', title: 'Private by default', body: 'The open-source pilot processes files in the browser and sends no client content to an external API. Use the ? button any time to replay this tour.' },
+]
+
+function OnboardingTour({ isOpen, onClose, onStepChange, stepIndex }: { isOpen: boolean; onClose: () => void; onStepChange: (step: number) => void; stepIndex: number }) {
+  const [spotlight, setSpotlight] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const step = tourSteps[stepIndex]
+
+  useEffect(() => {
+    if (!isOpen) return
+    const updateSpotlight = () => {
+      const target = document.querySelector(`[data-tour="${step.target}"]`)
+      if (!target) {
+        setSpotlight(null)
+        return
+      }
+      target.scrollIntoView({ block: 'center', inline: 'nearest' })
+      const rect = target.getBoundingClientRect()
+      setSpotlight({ top: Math.max(8, rect.top - 8), left: Math.max(8, rect.left - 8), width: rect.width + 16, height: rect.height + 16 })
+    }
+    const frame = window.requestAnimationFrame(updateSpotlight)
+    window.addEventListener('resize', updateSpotlight)
+    window.addEventListener('scroll', updateSpotlight, true)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updateSpotlight)
+      window.removeEventListener('scroll', updateSpotlight, true)
+    }
+  }, [isOpen, step.target])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+      if (event.key === 'ArrowRight') onStepChange(Math.min(tourSteps.length - 1, stepIndex + 1))
+      if (event.key === 'ArrowLeft') onStepChange(Math.max(0, stepIndex - 1))
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose, onStepChange, stepIndex])
+
+  if (!isOpen) return null
+
+  const isLastStep = stepIndex === tourSteps.length - 1
+  return <>
+    <div className="tour-catcher" aria-hidden="true" />
+    {spotlight && <div className="tour-spotlight" aria-hidden="true" style={{ top: spotlight.top, left: spotlight.left, width: spotlight.width, height: spotlight.height }} />}
+    <section aria-labelledby="tour-title" aria-modal="true" className="onboarding-card" role="dialog">
+      <div className="onboarding-progress"><span>ScopeGuard tour</span><span>{stepIndex + 1} / {tourSteps.length}</span></div>
+      <div className="onboarding-progress-bar"><span style={{ width: `${((stepIndex + 1) / tourSteps.length) * 100}%` }} /></div>
+      <h2 id="tour-title">{step.title}</h2>
+      <p>{step.body}</p>
+      <div className="onboarding-actions"><button className="onboarding-skip" onClick={onClose} type="button">Skip tour</button><div><button className="onboarding-back" disabled={stepIndex === 0} onClick={() => onStepChange(stepIndex - 1)} type="button">Back</button><button className="onboarding-next" onClick={() => isLastStep ? onClose() : onStepChange(stepIndex + 1)} type="button">{isLastStep ? 'Done' : 'Next'} <span>→</span></button></div></div>
+    </section>
+  </>
+}
+
+function hasCompletedTour(): boolean {
+  try {
+    return window.localStorage.getItem(tourStorageKey) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function markTourComplete() {
+  try {
+    window.localStorage.setItem(tourStorageKey, 'true')
+  } catch {
+    // The tour remains available from the help button when storage is unavailable.
+  }
 }
 
 function sourceKindLabel(kind: SourceDocument['kind']): string {

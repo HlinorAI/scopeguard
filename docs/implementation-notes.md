@@ -15,6 +15,7 @@ The current slice is a responsive React/Vite local-first review workspace, a det
 - PDF/DOCX are rejected with an explicit next-adapter message instead of pretending they were parsed. CSV/XLSX and CRM/ERP records are deferred to private add-ons; Slack/Gmail/WhatsApp connectors are the next open-source pilot slice.
 - Findings are explicitly evidence-backed and use “potential” language.
 - A reviewer can add a note, mark a finding in scope, create a change request decision, reopen it, and use the unreviewed filter as a queue.
+- A first-run onboarding tour explains the scope, source upload, analysis, evidence review, decisions and local-first privacy model. The tour can be skipped, replayed from the help button and navigated with the keyboard.
 
 ## Next technical slice
 
