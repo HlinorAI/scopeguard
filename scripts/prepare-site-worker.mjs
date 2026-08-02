@@ -12,7 +12,7 @@ const worker = `const worker = {
     if (request.method !== 'GET' && request.method !== 'HEAD') return response
     if (url.pathname.startsWith('/assets/')) return response
 
-    return env.ASSETS.fetch(new Request(new URL('/', request.url), request))
+    return env.ASSETS.fetch(new Request(new URL('/index.html', request.url), request))
   },
 }
 
