@@ -1,0 +1,54 @@
+rules:
+  - id: new_deliverable
+    type: NEW DELIVERABLE
+    pattern: "dashboard|partner portal|mobile app|new page|additional integration|new integration"
+    titleStyle: subject_not_in_scope
+    severity: high
+    confidence: 94
+    minHours: 32
+    maxHours: 40
+    scopeTerms:
+      - dashboard
+      - partner
+      - marketing site
+      - integration
+
+  - id: changed_acceptance_criteria
+    type: ACCEPTANCE CRITERIA
+    pattern: "real[- ]?time|instantly|without (refreshing|reloading)|pixel[- ]perfect|live updates"
+    titleStyle: changes_expectation
+    severity: medium
+    confidence: 82
+    minHours: 8
+    maxHours: 12
+    scopeTerms:
+      - status
+      - sync
+      - acceptance
+      - criteria
+
+  - id: extra_revision
+    type: EXTRA REVISION
+    pattern: "one more pass|one last pass|another revision|fourth revision|additional revision|extra round"
+    titleStyle: extra_revision
+    severity: high
+    confidence: 98
+    minHours: 4
+    maxHours: 6
+    scopeTerms:
+      - revision
+      - round
+
+  - id: unpriced_commitment
+    type: UNPRICED COMMITMENT
+    pattern: "\\b(we will|we'll|we can|make sure|add)\\b"
+    titleStyle: unpriced_commitment
+    severity: medium
+    confidence: 71
+    minHours: 6
+    maxHours: 10
+    scopeTerms:
+      - analytics
+      - tracking
+      - commitment
+      - price

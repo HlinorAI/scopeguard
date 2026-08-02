@@ -1,80 +1,23 @@
 import { useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
+import { createRoot } from 'react-dom/client'
+import { analyzeSources, demoSources, parseSourceFile } from './analysis'
+import type { Finding, SourceDocument } from './analysis'
 import './styles.css'
-
-type Finding = {
-  id: string
-  type: string
-  title: string
-  excerpt: string
-  source: string
-  scope: string
-  hours: string
-  confidence: number
-  severity: 'high' | 'medium' | 'low'
-  reviewed: boolean
-}
-
-const initialFindings: Finding[] = [
-  {
-    id: 'SG-014',
-    type: 'NEW DELIVERABLE',
-    title: 'Partner dashboard is not in the agreed scope',
-    excerpt: '“Can we also add a lightweight dashboard for partners before launch?”',
-    source: 'Slack · #acme-launch · 14 May, 10:42',
-    scope: 'SOW §2.1 · Public marketing site',
-    hours: '32–40h',
-    confidence: 94,
-    severity: 'high',
-    reviewed: false,
-  },
-  {
-    id: 'SG-011',
-    type: 'ACCEPTANCE CRITERIA',
-    title: '“Real-time” status changes the delivery expectation',
-    excerpt: '“The status should update instantly without refreshing the page.”',
-    source: 'Email · Alex → Studio · 13 May, 16:08',
-    scope: 'SOW §3.2 · Daily status sync',
-    hours: '8–12h',
-    confidence: 82,
-    severity: 'medium',
-    reviewed: false,
-  },
-  {
-    id: 'SG-008',
-    type: 'EXTRA REVISION',
-    title: 'Fourth revision round requested on homepage',
-    excerpt: '“One last pass on the headline and hero direction, then we are done.”',
-    source: 'Slack · #acme-launch · 12 May, 09:17',
-    scope: 'SOW §4.4 · Two revision rounds',
-    hours: '4–6h',
-    confidence: 98,
-    severity: 'high',
-    reviewed: true,
-  },
-  {
-    id: 'SG-005',
-    type: 'UNPRICED COMMITMENT',
-    title: 'Analytics implementation was promised in a follow-up',
-    excerpt: '“We will make sure the new funnel is tracked end to end.”',
-    source: 'Email · Studio → Alex · 09 May, 11:24',
-    scope: 'No matching clause found',
-    hours: '6–10h',
-    confidence: 71,
-    severity: 'medium',
-    reviewed: false,
-  },
-]
-
 const projectNames = ['Acme launch site', 'Northstar rebrand', 'Wavelength app']
+const initialAnalysis = analyzeSources(demoSources)
 
 function App() {
   const [activeProject, setActiveProject] = useState(projectNames[0])
   const [filter, setFilter] = useState<'all' | 'high' | 'unreviewed'>('all')
-  const [findings, setFindings] = useState(initialFindings)
+  const [findings, setFindings] = useState<Finding[]>(initialAnalysis.findings)
+  const [sources, setSources] = useState<SourceDocument[]>(demoSources)
+  const [analysis, setAnalysis] = useState(initialAnalysis)
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [analysisReady, setAnalysisReady] = useState(true)
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>(['Acme_SOW_v3.pdf', 'acme-slack-export.json'])
+  const [sourceError, setSourceError] = useState<string | null>(null)
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [isDragging, setIsDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -84,31 +27,63 @@ function App() {
     return findings
   }, [filter, findings])
 
-  const handleFiles = (files: FileList | null) => {
+  const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return
-    setUploadedFiles((current) => [...current, ...Array.from(files).map((file) => file.name)])
+    const parsed = await Promise.all(Array.from(files).map(async (file) => {
+      try {
+        return { source: await parseSourceFile(file) }
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : `${file.name}: could not parse this source` }
+      }
+    }))
+    const nextSources = parsed.flatMap((result) => result.source ? [result.source] : [])
+    const errors = parsed.flatMap((result) => result.error ? [result.error] : [])
+    if (nextSources.length) setSources((current) => [...current, ...nextSources])
+    setSourceError(errors.length ? errors.join(' ') : null)
     setAnalysisReady(false)
   }
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    handleFiles(event.target.files)
+    void handleFiles(event.target.files)
     event.target.value = ''
   }
 
   const runAnalysis = () => {
-    if (uploadedFiles.length < 2) return
+    if (sources.length < 2) {
+      setSourceError('Add one scope document and one communication export before running analysis.')
+      return
+    }
     setIsAnalysing(true)
     setAnalysisReady(false)
     window.setTimeout(() => {
+      const nextAnalysis = analyzeSources(sources)
+      setAnalysis(nextAnalysis)
+      setFindings((current) => nextAnalysis.findings.map((finding) => ({
+        ...finding,
+        reviewed: current.find((previous) => previous.id === finding.id)?.reviewed ?? false,
+        decision: current.find((previous) => previous.id === finding.id)?.decision ?? 'pending',
+      })))
       setIsAnalysing(false)
       setAnalysisReady(true)
-    }, 1200)
+    }, 350)
   }
 
-  const toggleReviewed = (id: string) => {
+  const openReview = (id: string) => {
+    setReviewingId((current) => current === id ? null : id)
+  }
+
+  const decideFinding = (id: string, decision: Finding['decision']) => {
     setFindings((current) => current.map((finding) => (
-      finding.id === id ? { ...finding, reviewed: !finding.reviewed } : finding
+      finding.id === id ? { ...finding, reviewed: true, decision } : finding
     )))
+    setReviewingId(null)
+  }
+
+  const reopenFinding = (id: string) => {
+    setFindings((current) => current.map((finding) => (
+      finding.id === id ? { ...finding, reviewed: false, decision: 'pending' } : finding
+    )))
+    setReviewingId(id)
   }
 
   return (
@@ -171,26 +146,36 @@ function App() {
           </section>
 
           <section className="status-strip" aria-label="Analysis status">
-            <div className="status-intro"><span className={`status-icon ${analysisReady ? 'ready' : ''}`}>{analysisReady ? '✓' : '…'}</span><div><strong>{analysisReady ? 'Analysis complete' : 'Ready to analyse'}</strong><span>{analysisReady ? 'Compared 38 messages against 12 scope items' : 'Add a scope document and a communication export'}</span></div></div>
-            <div className="status-metrics"><div><span>Scope coverage</span><strong>92%</strong></div><div><span>Hours at risk</span><strong className="orange-text">50–68h</strong></div><div><span>Unreviewed</span><strong>{findings.filter((finding) => !finding.reviewed).length}</strong></div></div>
+            <div className="status-intro"><span className={`status-icon ${analysisReady ? 'ready' : ''}`}>{analysisReady ? '✓' : '…'}</span><div><strong>{analysisReady ? 'Analysis complete' : 'Ready to analyse'}</strong><span>{analysisReady ? `Compared ${analysis.messagesCompared} messages against ${analysis.scopeItemsCount} scope items` : `${sources.length} source${sources.length === 1 ? '' : 's'} loaded · Run analysis to compare them`}</span></div></div>
+            <div className="status-metrics"><div><span>Scope coverage</span><strong>{analysis.scopeCoverage}%</strong></div><div><span>Hours at risk</span><strong className="orange-text">{analysis.hoursAtRisk}</strong></div><div><span>Unreviewed</span><strong>{findings.filter((finding) => !finding.reviewed).length}</strong></div></div>
           </section>
 
           <section className="workspace-grid">
             <div className="evidence-column">
               <div className="section-heading"><div><p className="eyebrow">EVIDENCE REVIEW</p><h2>Potential scope drift</h2></div><div className="filter-tabs" role="tablist" aria-label="Finding filters">{(['all', 'high', 'unreviewed'] as const).map((item) => <button className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} role="tab" type="button">{item === 'all' ? 'All findings' : item === 'high' ? 'High risk' : 'Unreviewed'}</button>)}</div></div>
               <div className="finding-list">
-                {visibleFindings.map((finding) => <FindingCard finding={finding} key={finding.id} onToggleReviewed={toggleReviewed} />)}
+                {visibleFindings.map((finding) => <FindingCard
+                  finding={finding}
+                  isReviewing={reviewingId === finding.id}
+                  key={finding.id}
+                  note={reviewNotes[finding.id] ?? ''}
+                  onDecide={decideFinding}
+                  onNoteChange={(note) => setReviewNotes((current) => ({ ...current, [finding.id]: note }))}
+                  onOpenReview={openReview}
+                  onReopen={reopenFinding}
+                />)}
                 {!visibleFindings.length && <div className="empty-state"><strong>Nothing waiting here.</strong><span>Every finding in this view has been reviewed.</span></div>}
               </div>
             </div>
 
             <aside className="source-panel">
-              <div className="section-heading source-heading"><div><p className="eyebrow">PROJECT SOURCES</p><h2>What we compared</h2></div><span className="source-count">{uploadedFiles.length}/04</span></div>
-              <div className="source-list">{uploadedFiles.map((file, index) => <div className="source-file" key={`${file}-${index}`}><span className={`file-icon ${file.endsWith('.pdf') ? 'pdf' : 'json'}`}>{file.endsWith('.pdf') ? 'PDF' : 'JSON'}</span><div><strong>{file}</strong><small>{file.endsWith('.pdf') ? 'Scope document · 1.2 MB' : 'Communication export · 486 KB'}</small></div><span className="file-check">✓</span></div>)}</div>
+              <div className="section-heading source-heading"><div><p className="eyebrow">PROJECT SOURCES</p><h2>What we compared</h2></div><span className="source-count">{sources.length}/04</span></div>
+              <div className="source-list">{sources.map((source) => <div className="source-file" key={source.id}><span className={`file-icon ${source.kind === 'scope' ? 'pdf' : 'json'}`}>{source.format.toUpperCase()}</span><div><strong>{source.name}</strong><small>{sourceKindLabel(source.kind)} · local source</small></div><span className="file-check">✓</span></div>)}</div>
               <div className={`drop-zone ${isDragging ? 'is-dragging' : ''}`} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFiles(event.dataTransfer.files) }}>
-                <input accept=".pdf,.txt,.md,.eml,.json,.docx" className="visually-hidden" onChange={handleFileChange} ref={fileInput} type="file" multiple />
-                <span className="upload-symbol">+</span><strong>Add a source</strong><small>Drop files here or <button onClick={() => fileInput.current?.click()} type="button">browse</button></small>
+                <input accept=".txt,.md,.eml,.json" className="visually-hidden" onChange={handleFileChange} ref={fileInput} type="file" multiple />
+                <span className="upload-symbol">+</span><strong>Add a source</strong><small>TXT, MD, EML or JSON · <button onClick={() => fileInput.current?.click()} type="button">browse</button></small>
               </div>
+              {sourceError && <div className="source-error" role="alert">{sourceError}</div>}
               <div className="privacy-callout"><span>◆</span><div><strong>Private by default</strong><p>Files are processed locally in this prototype. No client data leaves your workspace.</p></div></div>
             </aside>
           </section>
@@ -200,14 +185,45 @@ function App() {
   )
 }
 
-function FindingCard({ finding, onToggleReviewed }: { finding: Finding; onToggleReviewed: (id: string) => void }) {
+function FindingCard({
+  finding,
+  isReviewing,
+  note,
+  onDecide,
+  onNoteChange,
+  onOpenReview,
+  onReopen,
+}: {
+  finding: Finding
+  isReviewing: boolean
+  note: string
+  onDecide: (id: string, decision: Finding['decision']) => void
+  onNoteChange: (note: string) => void
+  onOpenReview: (id: string) => void
+  onReopen: (id: string) => void
+}) {
   return <article className={`finding-card ${finding.reviewed ? 'is-reviewed' : ''}`}>
     <div className="finding-topline"><span className={`severity-dot ${finding.severity}`} /><span className="finding-type">{finding.type}</span><span className="finding-id">{finding.id}</span></div>
     <h3>{finding.title}</h3>
     <blockquote>{finding.excerpt}</blockquote>
     <div className="finding-meta"><span><b>Source</b>{finding.source}</span><span><b>Scope basis</b>{finding.scope}</span></div>
-    <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div><button className={`review-button ${finding.reviewed ? 'done' : ''}`} onClick={() => onToggleReviewed(finding.id)} type="button">{finding.reviewed ? 'Reviewed ✓' : 'Review finding →'}</button></div>
+    <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
+    {isReviewing && !finding.reviewed && <div className="review-panel"><label htmlFor={`review-note-${finding.id}`}>Decision note <span>optional</span></label><textarea id={`review-note-${finding.id}`} onChange={(event) => onNoteChange(event.target.value)} placeholder="Why should the team act on this finding?" value={note} /><div className="review-actions"><button className="in-scope-button" onClick={() => onDecide(finding.id, 'in_scope')} type="button">Mark in scope</button><button className="change-request-button" onClick={() => onDecide(finding.id, 'change_request')} type="button">Create change request <span>→</span></button></div></div>}
   </article>
 }
 
+function sourceKindLabel(kind: SourceDocument['kind']): string {
+  if (kind === 'scope') return 'Scope document'
+  if (kind === 'messages') return 'Communication export'
+  return 'Unclassified source'
+}
+
+function decisionLabel(decision: Finding['decision']): string {
+  if (decision === 'change_request') return 'Change request ✓'
+  if (decision === 'in_scope') return 'Marked in scope ✓'
+  return 'Reviewed ✓'
+}
+
 export default App
+
+createRoot(document.getElementById('root')!).render(<App />)
