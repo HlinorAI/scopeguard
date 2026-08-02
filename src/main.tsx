@@ -3,26 +3,37 @@ import type { ChangeEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import { analyzeSources, demoSources, parseSourceFile } from './analysis'
 import type { Finding, SourceDocument } from './analysis'
+import { buildChangeRequest, buildReviewReport } from './report'
+import { loadWorkspace, saveWorkspace } from './storage'
 import './styles.css'
 const projectNames = ['Acme launch site', 'Northstar rebrand', 'Wavelength app']
 const initialAnalysis = analyzeSources(demoSources)
 const tourStorageKey = 'scopeguard-onboarding-complete'
+const persistedWorkspace = loadWorkspace()
 
 function App() {
-  const [activeProject, setActiveProject] = useState(projectNames[0])
+  const [activeProject, setActiveProject] = useState(persistedWorkspace?.projectName ?? projectNames[0])
   const [filter, setFilter] = useState<'all' | 'high' | 'unreviewed'>('all')
-  const [findings, setFindings] = useState<Finding[]>(initialAnalysis.findings)
-  const [sources, setSources] = useState<SourceDocument[]>(demoSources)
-  const [analysis, setAnalysis] = useState(initialAnalysis)
+  const [findings, setFindings] = useState<Finding[]>(persistedWorkspace?.findings ?? initialAnalysis.findings)
+  const [sources, setSources] = useState<SourceDocument[]>(persistedWorkspace?.sources ?? demoSources)
+  const [analysis, setAnalysis] = useState(persistedWorkspace?.analysis ?? initialAnalysis)
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [analysisReady, setAnalysisReady] = useState(true)
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
-  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>(persistedWorkspace?.reviewNotes ?? {})
   const [isDragging, setIsDragging] = useState(false)
   const [isTourOpen, setIsTourOpen] = useState(() => !hasCompletedTour())
   const [tourStep, setTourStep] = useState(0)
+  const [savedAt, setSavedAt] = useState<string | null>(persistedWorkspace?.savedAt ?? null)
+  const [exportNotice, setExportNotice] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  const changeRequestFindings = useMemo(() => findings.filter((finding) => finding.decision === 'change_request'), [findings])
+
+  useEffect(() => {
+    setSavedAt(saveWorkspace({ projectName: activeProject, sources, findings, analysis, reviewNotes }))
+  }, [activeProject, analysis, findings, reviewNotes, sources])
 
   const visibleFindings = useMemo(() => {
     if (filter === 'high') return findings.filter((finding) => finding.severity === 'high')
@@ -89,6 +100,22 @@ function App() {
     setReviewingId(id)
   }
 
+  const exportReport = () => {
+    downloadText(`${toFileSlug(activeProject)}-scopeguard-report.md`, buildReviewReport(activeProject, sources, analysis, findings))
+    showExportNotice('Report downloaded')
+  }
+
+  const exportChangeRequests = () => {
+    const content = changeRequestFindings.map((finding) => buildChangeRequest(finding, activeProject, reviewNotes[finding.id])).join('\n\n---\n\n')
+    downloadText(`${toFileSlug(activeProject)}-change-requests.md`, content)
+    showExportNotice(`${changeRequestFindings.length} change request${changeRequestFindings.length === 1 ? '' : 's'} downloaded`)
+  }
+
+  const showExportNotice = (message: string) => {
+    setExportNotice(message)
+    window.setTimeout(() => setExportNotice(null), 2400)
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -135,7 +162,7 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs"><span>Projects</span><b>/</b><strong>{activeProject}</strong></div>
-          <div className="topbar-actions"><span className="saved-status"><i /> Saved locally</span><button className="help-button" onClick={() => { setTourStep(0); setIsTourOpen(true) }} type="button" aria-label="Replay onboarding tour" title="Replay onboarding tour">?</button></div>
+          <div className="topbar-actions"><span className="saved-status" title={savedAt ? `Last saved ${new Date(savedAt).toLocaleTimeString()}` : 'Not saved yet'}><i /> Saved locally</span>{exportNotice && <span className="export-notice" role="status">{exportNotice}</span>}<button className="help-button" onClick={() => { setTourStep(0); setIsTourOpen(true) }} type="button" aria-label="Replay onboarding tour" title="Replay onboarding tour">?</button></div>
         </header>
 
         <div className="content-wrap">
@@ -145,7 +172,7 @@ function App() {
               <h1>Keep the work<br /><em>inside the lines.</em></h1>
               <p className="intro-copy">ScopeGuard compares what was agreed with what is now being asked — before the margin disappears.</p>
             </div>
-            <div className="intro-actions"><button className="quiet-button" type="button">Export report <span>↗</span></button><button className="primary-button" data-tour="analysis" onClick={runAnalysis} type="button">{isAnalysing ? 'Analysing…' : 'Run analysis'} <span>→</span></button></div>
+            <div className="intro-actions"><button className="quiet-button" onClick={exportReport} type="button">Export report <span>↗</span></button>{changeRequestFindings.length > 0 && <button className="quiet-button" onClick={exportChangeRequests} type="button">Change requests <span>↗</span></button>}<button className="primary-button" data-tour="analysis" onClick={runAnalysis} type="button">{isAnalysing ? 'Analysing…' : 'Run analysis'} <span>→</span></button></div>
           </section>
 
           <section className="status-strip" aria-label="Analysis status">
@@ -298,6 +325,20 @@ function markTourComplete() {
   } catch {
     // The tour remains available from the help button when storage is unavailable.
   }
+}
+
+function downloadText(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function toFileSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scopeguard'
 }
 
 function sourceKindLabel(kind: SourceDocument['kind']): string {

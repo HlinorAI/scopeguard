@@ -16,11 +16,13 @@ The current slice is a responsive React/Vite local-first review workspace, a det
 - Findings are explicitly evidence-backed and use “potential” language.
 - A reviewer can add a note, mark a finding in scope, create a change request decision, reopen it, and use the unreviewed filter as a queue.
 - A first-run onboarding tour explains the scope, source upload, analysis, evidence review, decisions and local-first privacy model. The tour can be skipped, replayed from the help button and navigated with the keyboard.
+- The current local workspace is persisted in browser storage under a versioned key, including sources, findings, analysis metrics, review notes and decisions. This is intentionally device-local and does not replace a shared backend.
+- Review reports and approved change requests can be exported as Markdown files without sending project data to an external service.
 
 ## Next technical slice
 
 1. Add PDF/DOCX extraction adapters.
 2. Add rule-level tests against a labelled fixture set.
-3. Persist projects, sources, review decisions and findings in local SQLite.
-4. Turn the change-request decision into an editable/exportable draft.
-5. Build and test the open-source Slack, Gmail and WhatsApp pilot connectors.
+3. Add a shared server-side workspace and explicit authentication for team use.
+4. Turn the change-request export into an editable, provider-specific draft.
+5. Build and test live Slack, Gmail and WhatsApp connectors behind the approved privacy boundary.
