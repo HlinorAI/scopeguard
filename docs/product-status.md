@@ -283,8 +283,7 @@ npm run build
 - Repository: `HlinorAI/scopeguard`.
 - License: Apache License 2.0.
 - Main branch: `main`.
-- Working branch: `agent/scopeguard-foundation`.
-- PR #1 is merged into `main`.
+- The current open-source pilot is merged into `main`.
 - Release `v0.2.0` is public.
 - The repository contains the product foundation, ingestion, review workflow, pilot adapters, onboarding tour, CI and tests.
 
