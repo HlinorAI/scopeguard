@@ -41,7 +41,29 @@ The current prototype runs entirely in the browser and supports this flow:
 
 The analyzer uses “potential” language deliberately. A rule is a signal, not a legal or commercial decision. The final decision belongs to the project owner, account lead or delivery team.
 
+## Who uses ScopeGuard
+
+ScopeGuard has two separate surfaces:
+
+1. **The user-facing product** — a hosted browser app for finance, sales, account and delivery teams. These users should open a link, sign in and work with projects without installing software or using a terminal.
+2. **The open-source repository** — the inspectable product core for developers, contributors and technical operators.
+
+The GitHub repository is not the intended daily interface for finance or sales. The current local Vite app is a development surface; an invite-only hosted pilot is the next product-delivery step.
+
 ## How to use the app
+
+### Hosted pilot flow
+
+The target end-user experience is:
+
+1. Open the ScopeGuard web app from a shared link.
+2. Sign in or accept a workspace invite.
+3. Create or select a client project.
+4. Upload the SOW and Slack/Gmail/WhatsApp exports, or use an approved connector when available.
+5. Review findings and decide whether each item is in scope or needs a change request.
+6. Export or share the review with sales, finance and delivery.
+
+The hosted pilot is not deployed yet. Until it is available, contributors can run the local development surface below.
 
 ### 1. Clone and start the local app
 

@@ -18,6 +18,15 @@ The product asks one practical question:
 
 ScopeGuard does not replace an account manager, project manager or legal review. It helps the team spot potential scope drift early and collect the evidence needed for a decision.
 
+## Distribution model
+
+The product has two distinct surfaces:
+
+1. **Hosted user-facing app** — for finance, sales, account and delivery teams. It must work in a browser with a shared link, sign-in and no terminal usage.
+2. **Open-source repository** — for developers, contributors and technical operators who inspect, extend or self-host the core.
+
+Finance and sales users are not expected to use GitHub, Node.js or npm. The current local Vite app is a development surface only. The next product slice is an invite-only hosted pilot.
+
 ## 2. How the current MVP works
 
 ```text
@@ -194,6 +203,8 @@ This is the next commercial layer after the Slack/Gmail/WhatsApp pilot.
 ## 7. Not implemented yet
 
 - Direct Slack, Gmail and WhatsApp integrations are planned as the next open-source pilot slice; export adapters are already available.
+- Hosted browser deployment with sign-in and invite-based access.
+- Persistent project, source and review storage.
 - Backend and authentication.
 - Persistent storage after a page reload.
 - Team collaboration.
