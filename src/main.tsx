@@ -1,30 +1,44 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { createRoot } from 'react-dom/client'
-import { analyzeSources, demoSources, parseSourceFile } from './analysis'
+import { analyzeSources, demoSources, parseSourceFile, validateSources } from './analysis'
 import type { Finding, SourceDocument } from './analysis'
+import { buildChangeRequest, buildReviewReport } from './report'
+import { loadWorkspace, saveWorkspace } from './storage'
 import './styles.css'
-const projectNames = ['Acme launch site', 'Northstar rebrand', 'Wavelength app']
 const initialAnalysis = analyzeSources(demoSources)
 const tourStorageKey = 'scopeguard-onboarding-complete'
+const persistedWorkspace = loadWorkspace()
 
 function App() {
-  const [activeProject, setActiveProject] = useState(projectNames[0])
+  const [activeProject, setActiveProject] = useState(persistedWorkspace?.projectName ?? 'Acme launch site')
   const [filter, setFilter] = useState<'all' | 'high' | 'unreviewed'>('all')
-  const [findings, setFindings] = useState<Finding[]>(initialAnalysis.findings)
-  const [sources, setSources] = useState<SourceDocument[]>(demoSources)
-  const [analysis, setAnalysis] = useState(initialAnalysis)
+  const [findings, setFindings] = useState<Finding[]>(persistedWorkspace?.findings ?? initialAnalysis.findings)
+  const [sources, setSources] = useState<SourceDocument[]>(persistedWorkspace?.sources ?? demoSources)
+  const [analysis, setAnalysis] = useState(persistedWorkspace?.analysis ?? initialAnalysis)
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [analysisReady, setAnalysisReady] = useState(true)
   const [sourceError, setSourceError] = useState<string | null>(null)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
-  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>(persistedWorkspace?.reviewNotes ?? {})
   const [isDragging, setIsDragging] = useState(false)
   const [isTourOpen, setIsTourOpen] = useState(() => !hasCompletedTour())
   const [tourStep, setTourStep] = useState(0)
+  const [savedAt, setSavedAt] = useState<string | null>(persistedWorkspace?.savedAt ?? null)
+  const [exportNotice, setExportNotice] = useState<string | null>(null)
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
+  const [draftProjectName, setDraftProjectName] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
 
+  const changeRequestFindings = useMemo(() => analysisReady ? findings.filter((finding) => finding.decision === 'change_request') : [], [analysisReady, findings])
+  const isDemoWorkspace = sources.length === demoSources.length && sources.every((source, index) => source.id === demoSources[index]?.id)
+
+  useEffect(() => {
+    setSavedAt(saveWorkspace({ projectName: activeProject, sources, findings, analysis, reviewNotes }))
+  }, [activeProject, analysis, findings, reviewNotes, sources])
+
   const visibleFindings = useMemo(() => {
+    if (!analysisReady) return []
     if (filter === 'high') return findings.filter((finding) => finding.severity === 'high')
     if (filter === 'unreviewed') return findings.filter((finding) => !finding.reviewed)
     return findings
@@ -41,7 +55,14 @@ function App() {
     }))
     const nextSources = parsed.flatMap((result) => result.source ? [result.source] : [])
     const errors = parsed.flatMap((result) => result.error ? [result.error] : [])
-    if (nextSources.length) setSources((current) => [...current, ...nextSources])
+    if (nextSources.length) {
+      setSources((current) => {
+        const isDemoWorkspace = current.length === demoSources.length && current.every((source, index) => source.id === demoSources[index]?.id)
+        const baseSources = isDemoWorkspace ? [] : current
+        const existingIds = new Set(baseSources.map((source) => source.id))
+        return [...baseSources, ...nextSources.filter((source) => !existingIds.has(source.id))]
+      })
+    }
     setSourceError(errors.length ? errors.join(' ') : null)
     setAnalysisReady(false)
   }
@@ -52,10 +73,12 @@ function App() {
   }
 
   const runAnalysis = () => {
-    if (sources.length < 2) {
-      setSourceError('Add one scope document and one communication export before running analysis.')
+    const validation = validateSources(sources)
+    if (validation.errors.length) {
+      setSourceError(validation.errors.join(' '))
       return
     }
+    setSourceError(validation.warnings.length ? validation.warnings.join(' ') : null)
     setIsAnalysing(true)
     setAnalysisReady(false)
     window.setTimeout(() => {
@@ -69,6 +92,36 @@ function App() {
       setIsAnalysing(false)
       setAnalysisReady(true)
     }, 350)
+  }
+
+  const removeSource = (id: string) => {
+    setSources((current) => current.filter((source) => source.id !== id))
+    setAnalysisReady(false)
+    setReviewingId(null)
+  }
+
+  const reclassifySource = (id: string, kind: SourceDocument['kind']) => {
+    setSources((current) => current.map((source) => source.id === id ? { ...source, kind } : source))
+    setAnalysisReady(false)
+    setReviewingId(null)
+  }
+
+  const startNewProject = () => {
+    setDraftProjectName('')
+    setIsCreatingProject(true)
+  }
+
+  const createProject = () => {
+    const name = draftProjectName.trim() || 'Untitled pilot project'
+    setActiveProject(name)
+    setSources([])
+    setFindings([])
+    setAnalysis(analyzeSources([]))
+    setReviewNotes({})
+    setSourceError(null)
+    setReviewingId(null)
+    setAnalysisReady(false)
+    setIsCreatingProject(false)
   }
 
   const openReview = (id: string) => {
@@ -89,6 +142,23 @@ function App() {
     setReviewingId(id)
   }
 
+  const exportReport = () => {
+    if (!analysisReady) return
+    downloadText(`${toFileSlug(activeProject)}-scopeguard-report.md`, buildReviewReport(activeProject, sources, analysis, findings))
+    showExportNotice('Report downloaded')
+  }
+
+  const exportChangeRequests = () => {
+    const content = changeRequestFindings.map((finding) => buildChangeRequest(finding, activeProject, reviewNotes[finding.id])).join('\n\n---\n\n')
+    downloadText(`${toFileSlug(activeProject)}-change-requests.md`, content)
+    showExportNotice(`${changeRequestFindings.length} change request${changeRequestFindings.length === 1 ? '' : 's'} downloaded`)
+  }
+
+  const showExportNotice = (message: string) => {
+    setExportNotice(message)
+    window.setTimeout(() => setExportNotice(null), 2400)
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -102,60 +172,47 @@ function App() {
 
         <div className="sidebar-section">
           <div className="sidebar-label">Workspace</div>
-          <button className="workspace-switcher" type="button">
-            <span className="workspace-avatar">N</span>
-            <span className="workspace-copy"><strong>Northstar Studio</strong><small>Agency workspace</small></span>
-            <span className="chevron" aria-hidden="true">⌄</span>
-          </button>
+          <div className="workspace-summary"><span className="workspace-avatar">L</span><span className="workspace-copy"><strong>Local pilot</strong><small>Device-only workspace</small></span></div>
         </div>
 
-        <nav className="project-nav" aria-label="Projects">
-          <div className="sidebar-label">Projects <span>03</span></div>
-          {projectNames.map((project, index) => (
-            <button
-              className={`project-item ${project === activeProject ? 'is-active' : ''}`}
-              key={project}
-              onClick={() => setActiveProject(project)}
-              type="button"
-            >
-              <span className={`project-dot dot-${index + 1}`} />
-              <span>{project}</span>
-              {index === 0 && <span className="project-count">04</span>}
-            </button>
-          ))}
-          <button className="new-project" type="button"><span>+</span> New project</button>
+        <nav className="project-nav" aria-label="Local project">
+          <div className="sidebar-label">Project</div>
+          <div className="project-item is-active"><span className="project-dot" /><span>{activeProject}</span><span className="project-count">{sources.length}</span></div>
+          {isCreatingProject ? <form className="new-project-form" onSubmit={(event) => { event.preventDefault(); createProject() }}><label htmlFor="new-project-name">New project name</label><input autoFocus id="new-project-name" onChange={(event) => setDraftProjectName(event.target.value)} placeholder="Client project" value={draftProjectName} /><div><button className="new-project-cancel" onClick={() => setIsCreatingProject(false)} type="button">Cancel</button><button className="new-project-create" type="submit">Start</button></div></form> : <button className="new-project" onClick={startNewProject} type="button"><span>+</span> New local project</button>}
         </nav>
 
         <div className="sidebar-footer">
           <div className="privacy-note"><span className="lock-mark" aria-hidden="true">◆</span><span><strong>Local-first</strong><small>Your files stay private</small></span></div>
-          <div className="user-row"><span className="user-avatar">AN</span><span><strong>Andre</strong><small>Owner</small></span><button type="button" aria-label="Open account menu">···</button></div>
+          <div className="device-note"><strong>No team sync</strong><small>Shared workspace is not enabled in the pilot.</small></div>
         </div>
       </aside>
 
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs"><span>Projects</span><b>/</b><strong>{activeProject}</strong></div>
-          <div className="topbar-actions"><span className="saved-status"><i /> Saved locally</span><button className="help-button" onClick={() => { setTourStep(0); setIsTourOpen(true) }} type="button" aria-label="Replay onboarding tour" title="Replay onboarding tour">?</button></div>
+          <div className="topbar-actions"><span className="saved-status" title={savedAt ? `Last saved on this device at ${new Date(savedAt).toLocaleTimeString()}` : 'Browser storage is unavailable'}><i /> {savedAt ? 'Saved on this device' : 'Session only'}</span>{exportNotice && <span className="export-notice" role="status">{exportNotice}</span>}<button className="help-button" onClick={() => { setTourStep(0); setIsTourOpen(true) }} type="button" aria-label="Replay onboarding tour" title="Replay onboarding tour">?</button></div>
         </header>
 
         <div className="content-wrap">
           <section className="page-intro" data-tour="intro">
             <div>
-              <p className="eyebrow">PROJECT REVIEW · 14 MAY 2026</p>
+              <p className="eyebrow">PROJECT REVIEW · LOCAL PILOT</p>
               <h1>Keep the work<br /><em>inside the lines.</em></h1>
               <p className="intro-copy">ScopeGuard compares what was agreed with what is now being asked — before the margin disappears.</p>
             </div>
-            <div className="intro-actions"><button className="quiet-button" type="button">Export report <span>↗</span></button><button className="primary-button" data-tour="analysis" onClick={runAnalysis} type="button">{isAnalysing ? 'Analysing…' : 'Run analysis'} <span>→</span></button></div>
+            <div className="intro-actions"><button className="quiet-button" disabled={!analysisReady} onClick={exportReport} type="button">Export report <span>↗</span></button>{changeRequestFindings.length > 0 && <button className="quiet-button" onClick={exportChangeRequests} type="button">Change requests <span>↗</span></button>}<button className="primary-button" data-tour="analysis" disabled={isAnalysing} onClick={runAnalysis} type="button">{isAnalysing ? 'Analysing…' : 'Run analysis'} <span>→</span></button></div>
           </section>
 
+          {isDemoWorkspace && <div className="demo-banner" role="status"><span className="demo-banner-label">Demo data</span><p>The workspace starts with example files. Upload real exports to replace them, or start an empty local project.</p><button onClick={startNewProject} type="button">Start empty project →</button></div>}
+
           <section className="status-strip" aria-label="Analysis status">
-            <div className="status-intro"><span className={`status-icon ${analysisReady ? 'ready' : ''}`}>{analysisReady ? '✓' : '…'}</span><div><strong>{analysisReady ? 'Analysis complete' : 'Ready to analyse'}</strong><span>{analysisReady ? `Compared ${analysis.messagesCompared} messages against ${analysis.scopeItemsCount} scope items` : `${sources.length} source${sources.length === 1 ? '' : 's'} loaded · Run analysis to compare them`}</span></div></div>
-            <div className="status-metrics"><div><span>Scope coverage</span><strong>{analysis.scopeCoverage}%</strong></div><div><span>Hours at risk</span><strong className="orange-text">{analysis.hoursAtRisk}</strong></div><div><span>Unreviewed</span><strong>{findings.filter((finding) => !finding.reviewed).length}</strong></div></div>
+            <div className="status-intro"><span className={`status-icon ${analysisReady ? 'ready' : ''}`}>{analysisReady ? '✓' : '…'}</span><div><strong>{analysisReady ? 'Analysis complete' : sources.length ? 'Ready to analyse' : 'Add project sources'}</strong><span>{analysisReady ? `Compared ${analysis.messagesCompared} messages against ${analysis.scopeItemsCount} scope items` : `${sources.length} source${sources.length === 1 ? '' : 's'} loaded · Run analysis after adding both source types`}</span></div></div>
+            <div className="status-metrics"><div><span>With scope basis</span><strong>{analysisReady ? `${analysis.scopeCoverage}%` : '—'}</strong></div><div><span>Preliminary exposure</span><strong className="orange-text">{analysisReady ? analysis.hoursAtRisk : '—'}</strong></div><div><span>Unreviewed</span><strong>{analysisReady ? findings.filter((finding) => !finding.reviewed).length : '—'}</strong></div></div>
           </section>
 
           <section className="workspace-grid">
             <div className="evidence-column" data-tour="findings">
-              <div className="section-heading"><div><p className="eyebrow">EVIDENCE REVIEW</p><h2>Potential scope drift</h2></div><div className="filter-tabs" role="tablist" aria-label="Finding filters">{(['all', 'high', 'unreviewed'] as const).map((item) => <button className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} role="tab" type="button">{item === 'all' ? 'All findings' : item === 'high' ? 'High risk' : 'Unreviewed'}</button>)}</div></div>
+              <div className="section-heading"><div><p className="eyebrow">EVIDENCE REVIEW</p><h2>Potential scope drift</h2></div><div className="filter-tabs" role="tablist" aria-label="Finding filters">{(['all', 'high', 'unreviewed'] as const).map((item) => <button aria-selected={filter === item} className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} role="tab" type="button">{item === 'all' ? 'All findings' : item === 'high' ? 'High risk' : 'Unreviewed'}</button>)}</div></div>
               <div className="finding-list">
                 {visibleFindings.map((finding) => <FindingCard
                   finding={finding}
@@ -167,15 +224,15 @@ function App() {
                   onOpenReview={openReview}
                   onReopen={reopenFinding}
                 />)}
-                {!visibleFindings.length && <div className="empty-state"><strong>Nothing waiting here.</strong><span>Every finding in this view has been reviewed.</span></div>}
+                {!visibleFindings.length && <div className="empty-state"><strong>{!analysisReady ? 'Sources changed — run analysis.' : findings.length ? 'Nothing waiting here.' : 'No potential scope drift found.'}</strong><span>{!analysisReady ? 'Previous findings are hidden until the current source set is analysed.' : findings.length ? 'Every finding in this view has been reviewed.' : 'Add another communication export if you want to check more conversations.'}</span></div>}
               </div>
             </div>
 
             <aside className="source-panel" data-tour="sources">
-              <div className="section-heading source-heading"><div><p className="eyebrow">PROJECT SOURCES</p><h2>What we compared</h2></div><span className="source-count">{sources.length}/04</span></div>
-              <div className="source-list">{sources.map((source) => <div className="source-file" key={source.id}><span className={`file-icon ${source.kind === 'scope' ? 'pdf' : 'json'}`}>{source.format.toUpperCase()}</span><div><strong>{source.name}</strong><small>{sourceKindLabel(source.kind)} · local source</small></div><span className="file-check">✓</span></div>)}</div>
+              <div className="section-heading source-heading"><div><p className="eyebrow">PROJECT SOURCES</p><h2>What we compared</h2></div><span className="source-count">{sources.length}</span></div>
+              <div className="source-list">{sources.map((source) => <div className="source-file" key={source.id}><span className={`file-icon ${source.kind === 'scope' ? 'pdf' : 'json'}`}>{source.format.toUpperCase()}</span><div><strong>{source.name}</strong><small>{sourceKindLabel(source.kind)} · local source</small><select aria-label={`Classify ${source.name}`} className="source-kind-select" onChange={(event) => reclassifySource(source.id, event.target.value as SourceDocument['kind'])} value={source.kind}><option value="scope">Scope document</option><option value="messages">Communication export</option><option value="unknown">Unclassified</option></select></div><button aria-label={`Remove ${source.name}`} className="source-remove" onClick={() => removeSource(source.id)} type="button">×</button></div>)}</div>
               <div className={`drop-zone ${isDragging ? 'is-dragging' : ''}`} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); setIsDragging(false); handleFiles(event.dataTransfer.files) }}>
-                <input accept=".txt,.md,.eml,.json" className="visually-hidden" onChange={handleFileChange} ref={fileInput} type="file" multiple />
+                <input accept=".txt,.md,.eml,.json" aria-label="Upload scope or communication source files" className="visually-hidden" onChange={handleFileChange} ref={fileInput} type="file" multiple />
                 <span className="upload-symbol">+</span><strong>Add a source</strong><small>TXT, MD, EML or JSON · <button onClick={() => fileInput.current?.click()} type="button">browse</button></small>
               </div>
               {sourceError && <div className="source-error" role="alert">{sourceError}</div>}
@@ -211,7 +268,7 @@ function FindingCard({
     <h3>{finding.title}</h3>
     <blockquote>{finding.excerpt}</blockquote>
     <div className="finding-meta"><span><b>Source</b>{finding.source}</span><span><b>Scope basis</b>{finding.scope}</span></div>
-    <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" data-tour="review-action" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
+    <div className="finding-bottom"><div className="finding-estimate"><span>Preliminary exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% rule signal</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" data-tour="review-action" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
     {isReviewing && !finding.reviewed && <div className="review-panel"><label htmlFor={`review-note-${finding.id}`}>Decision note <span>optional</span></label><textarea id={`review-note-${finding.id}`} onChange={(event) => onNoteChange(event.target.value)} placeholder="Why should the team act on this finding?" value={note} /><div className="review-actions"><button className="in-scope-button" onClick={() => onDecide(finding.id, 'in_scope')} type="button">Mark in scope</button><button className="change-request-button" onClick={() => onDecide(finding.id, 'change_request')} type="button">Create change request <span>→</span></button></div></div>}
   </article>
 }
@@ -233,6 +290,7 @@ const tourSteps: TourStep[] = [
 
 function OnboardingTour({ isOpen, onClose, onStepChange, stepIndex }: { isOpen: boolean; onClose: () => void; onStepChange: (step: number) => void; stepIndex: number }) {
   const [spotlight, setSpotlight] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const dialogRef = useRef<HTMLElement>(null)
   const step = tourSteps[stepIndex]
 
   useEffect(() => {
@@ -259,6 +317,7 @@ function OnboardingTour({ isOpen, onClose, onStepChange, stepIndex }: { isOpen: 
 
   useEffect(() => {
     if (!isOpen) return
+    dialogRef.current?.focus()
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
       if (event.key === 'ArrowRight') onStepChange(Math.min(tourSteps.length - 1, stepIndex + 1))
@@ -274,11 +333,11 @@ function OnboardingTour({ isOpen, onClose, onStepChange, stepIndex }: { isOpen: 
   return <>
     <div className="tour-catcher" aria-hidden="true" />
     {spotlight && <div className="tour-spotlight" aria-hidden="true" style={{ top: spotlight.top, left: spotlight.left, width: spotlight.width, height: spotlight.height }} />}
-    <section aria-labelledby="tour-title" aria-modal="true" className="onboarding-card" role="dialog">
+    <section aria-describedby="tour-body" aria-labelledby="tour-title" aria-modal="true" className="onboarding-card" ref={dialogRef} role="dialog" tabIndex={-1}>
       <div className="onboarding-progress"><span>ScopeGuard tour</span><span>{stepIndex + 1} / {tourSteps.length}</span></div>
       <div className="onboarding-progress-bar"><span style={{ width: `${((stepIndex + 1) / tourSteps.length) * 100}%` }} /></div>
       <h2 id="tour-title">{step.title}</h2>
-      <p>{step.body}</p>
+      <p id="tour-body">{step.body}</p>
       <div className="onboarding-actions"><button className="onboarding-skip" onClick={onClose} type="button">Skip tour</button><div><button className="onboarding-back" disabled={stepIndex === 0} onClick={() => onStepChange(stepIndex - 1)} type="button">Back</button><button className="onboarding-next" onClick={() => isLastStep ? onClose() : onStepChange(stepIndex + 1)} type="button">{isLastStep ? 'Done' : 'Next'} <span>→</span></button></div></div>
     </section>
   </>
@@ -300,6 +359,20 @@ function markTourComplete() {
   }
 }
 
+function downloadText(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+function toFileSlug(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'scopeguard'
+}
+
 function sourceKindLabel(kind: SourceDocument['kind']): string {
   if (kind === 'scope') return 'Scope document'
   if (kind === 'messages') return 'Communication export'
@@ -314,4 +387,10 @@ function decisionLabel(decision: Finding['decision']): string {
 
 export default App
 
-createRoot(document.getElementById('root')!).render(<App />)
+const rootElement = document.getElementById('root')
+if (rootElement) {
+  const hotData = import.meta.hot?.data as { root?: ReturnType<typeof createRoot> } | undefined
+  const root = hotData?.root ?? createRoot(rootElement)
+  if (import.meta.hot) import.meta.hot.data.root = root
+  root.render(<App />)
+}
