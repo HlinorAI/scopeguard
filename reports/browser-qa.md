@@ -1,6 +1,6 @@
 # ScopeGuard browser QA
 
-Date: 2026-08-01
+Date: 2026-08-02
 
 ## Routes
 
@@ -22,6 +22,10 @@ Date: 2026-08-01
 - Run analysis moves through `Analysing…` and returns to `Analysis complete`.
 - Visible `browse` upload control accepts a non-sensitive QA fixture and adds its filename to the source list.
 - Two local fixtures (scope TXT + message JSON) are classified, imported and used to recompute findings and metrics after `Run analysis`.
+- Telegram JSON, WhatsApp TXT and Facebook Messenger JSON fixtures are classified, imported and used to recompute findings and findings from their message formats.
+- Telegram text arrays and Messenger `content` fields produce usable message text for rule matching.
+- Slack JSON, Gmail EML and WhatsApp TXT pilot fixtures are classified by channel, imported and produce their expected findings.
+- The Slack/Gmail/WhatsApp pilot workflow fits at 375px mobile width without horizontal overflow.
 - Unsupported PDF input is rejected with a visible, actionable error and does not enter the source list.
 - Review flow accepts a decision note, supports `Create change request`, `Mark in scope` and `Reopen`, and updates the unreviewed metric.
 - Review controls fit at 375px mobile width without horizontal overflow.
@@ -37,5 +41,6 @@ Date: 2026-08-01
 ## Remaining prototype limitations
 
 - Export report, help, workspace switcher, account menu and new project are visual placeholders.
-- Uploaded files are stored as filenames in React state; parsing and persistence are not implemented yet.
-- Analysis is simulated until the ingestion and rules pipeline is added.
+- Uploaded source content and review decisions remain in React state and are not persisted across a page reload.
+- Direct Telegram, WhatsApp Business and Facebook Messenger integrations are not implemented; the current workflow uses exported files.
+- PDF/DOCX extraction adapters are still pending.

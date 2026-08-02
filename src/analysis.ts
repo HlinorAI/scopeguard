@@ -1,5 +1,7 @@
 import { parse } from 'yaml'
 import rulesText from './rules.yaml?raw'
+import { detectPilotChannel, parsePilotExport } from './connectors'
+import type { PilotChannel } from './connectors'
 
 export type SourceKind = 'scope' | 'messages' | 'unknown'
 export type SourceFormat = 'txt' | 'md' | 'eml' | 'json' | 'pdf' | 'docx' | 'unknown'
@@ -10,6 +12,7 @@ export type SourceDocument = {
   kind: SourceKind
   format: SourceFormat
   content: string
+  channel?: PilotChannel
 }
 
 export type Finding = {
@@ -110,6 +113,7 @@ export const demoSources: SourceDocument[] = [
     name: 'acme-slack-export.json',
     kind: 'messages',
     format: 'json',
+    channel: 'slack',
     content: JSON.stringify([
       { channel: '#acme-launch', user: 'Alex', date: '14 May, 10:42', text: 'Can we also add a lightweight dashboard for partners before launch?' },
       { channel: 'Email', user: 'Alex', date: '13 May, 16:08', text: 'The status should update instantly without refreshing the page.' },
@@ -133,6 +137,7 @@ export async function parseSourceFile(file: File): Promise<SourceDocument> {
     kind: inferKind(file.name, content),
     format,
     content,
+    channel: detectPilotChannel(file.name, content),
   }
 }
 
@@ -158,11 +163,23 @@ export function analyzeSources(sources: SourceDocument[]): AnalysisResult {
 
 function inferKind(name: string, content: string): SourceKind {
   const lowerName = name.toLowerCase()
-  if (/slack|email|message|thread|chat|linear|jira/.test(lowerName)) return 'messages'
+  if (detectPilotChannel(name, content)) return 'messages'
+  if (/slack|email|message|messenger|telegram|whatsapp|facebook|meta|thread|chat|linear|jira/.test(lowerName)) return 'messages'
   if (/(^|[-_.])(sow|scope|contract|agreement|brief|proposal)([-_.]|$)/.test(lowerName)) return 'scope'
   if (content.match(/(^|\n)##?\s*(included|excluded|scope|deliverables)/i)) return 'scope'
   if (content.match(/(^|\n)\s*(from|subject|date):/i)) return 'messages'
+  if (looksLikeMessageExport(content)) return 'messages'
   return 'unknown'
+}
+
+function looksLikeMessageExport(content: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(content)
+    const entries = Array.isArray(parsed) ? parsed : isRecord(parsed) && Array.isArray(parsed.messages) ? parsed.messages : []
+    return entries.some((entry) => isRecord(entry) && ['text', 'message', 'body', 'content'].some((key) => key in entry))
+  } catch {
+    return false
+  }
 }
 
 function getFormat(name: string): SourceFormat {
@@ -201,6 +218,11 @@ function extractScopeItems(content: string): ScopeItem[] {
 }
 
 function extractMessages(source: SourceDocument): MessageRecord[] {
+  if (source.channel) return parsePilotExport(source.channel, source.name, source.content).map((message, index) => ({
+    id: `${source.id}-${index}`,
+    text: message.text,
+    source: message.source,
+  }))
   if (source.format === 'json') return parseJsonMessages(source)
   if (source.format === 'eml') return parseEmail(source)
 
@@ -218,10 +240,10 @@ function parseJsonMessages(source: SourceDocument): MessageRecord[] {
     return entries.flatMap((entry, index) => {
       if (typeof entry === 'string') return [{ id: `${source.id}-${index}`, text: entry, source: `${formatSourceName(source.name)} · message ${index + 1}` }]
       if (!isRecord(entry)) return []
-      const text = firstString(entry, ['text', 'message', 'body', 'content'])
+      const text = firstText(entry, ['text', 'message', 'body', 'content'])
       if (!text) return []
-      const channel = firstString(entry, ['channel', 'source', 'type'])
-      const date = firstString(entry, ['date', 'ts', 'timestamp'])
+      const channel = firstText(entry, ['channel', 'source', 'type'])
+      const date = firstText(entry, ['date', 'ts', 'timestamp'])
       return [{ id: `${source.id}-${index}`, text, source: [channel, date].filter(Boolean).join(' · ') || `${formatSourceName(source.name)} · message ${index + 1}` }]
     })
   } catch {
@@ -280,9 +302,18 @@ function formatSourceName(name: string): string {
   return name.replace(/\.[^.]+$/, '')
 }
 
-function firstString(record: Record<string, unknown>, keys: string[]): string | undefined {
+function firstText(record: Record<string, unknown>, keys: string[]): string | undefined {
   for (const key of keys) {
-    if (typeof record[key] === 'string' && record[key].trim()) return record[key].trim()
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (Array.isArray(value)) {
+      const text = value.map((part) => {
+        if (typeof part === 'string') return part
+        if (isRecord(part) && typeof part.text === 'string') return part.text
+        return ''
+      }).join('').trim()
+      if (text) return text
+    }
   }
   return undefined
 }
