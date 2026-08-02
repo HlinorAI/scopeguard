@@ -41,7 +41,7 @@ rules:
 
   - id: unpriced_commitment
     type: UNPRICED COMMITMENT
-    pattern: "\\b(we will|we'll|we can|make sure|add)\\b"
+    pattern: "\\b(?:we will|we'll|we can|make sure|promise to)\\b.{0,100}\\b(?:build|create|add|implement|track(?:ed|ing)?|deliver|set up|launch|support|configure|ship)\\b"
     titleStyle: unpriced_commitment
     severity: medium
     confidence: 71
@@ -50,5 +50,7 @@ rules:
     scopeTerms:
       - analytics
       - tracking
+      - tracked
+      - funnel
       - commitment
       - price

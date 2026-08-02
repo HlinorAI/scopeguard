@@ -63,7 +63,7 @@ The target end-user experience is:
 5. Review findings and decide whether each item is in scope or needs a change request.
 6. Export or share the review with sales, finance and delivery.
 
-The hosted pilot is live as a private early browser release. It is local-first: uploaded content is processed in the browser and the current pilot does not persist projects or decisions after a page reload. Contributors can run the local development surface below.
+The hosted pilot is live as a private early browser release. It is local-first: uploaded content is processed in the browser and the current pilot saves the active workspace on this device only. It does not provide shared team storage or sign-in yet. Contributors can run the local development surface below.
 
 ### 1. Clone and start the local app
 
@@ -89,11 +89,11 @@ http://127.0.0.1:5173/
 
 ### 2. Choose a project
 
-The current UI includes a small project switcher for the product surface. The active demo project is **Acme launch site**. The other project names are visual placeholders for the future multi-project workspace.
+The current UI uses one local project at a time. **New local project** clears the current device-local workspace and lets you name the next pilot project; shared multi-project workspaces are not enabled yet.
 
 ### 3. Add the source of truth
 
-Use **Add a source** to upload a scope document and communication export. The current supported formats are:
+Use **Add a source** to upload a scope document and communication export. You can remove a source or correct its classification before running the analysis. The current supported formats are:
 
 | Format | Typical use | Current support |
 | --- | --- | --- |
@@ -169,7 +169,7 @@ Click **Run analysis** after both source types are loaded. ScopeGuard then:
 - extracts bullet points from the scope source;
 - extracts messages from the communication source;
 - applies the configured rules;
-- calculates the current finding list, scope coverage, message count and estimated hours at risk.
+- calculates the current finding list, the share of messages with a scope basis, message count and preliminary exposure hours.
 
 The analysis is deterministic: the same source text and the same rules produce the same findings.
 
@@ -188,7 +188,7 @@ Use the filters to focus on **All findings**, **High risk** or **Unreviewed**. O
 
 ### 6. Decide what happens next
 
-Use **Mark in scope** when the request is genuinely covered by the agreement. Use **Create change request** when it needs clarification, a price, a new estimate or formal approval. The decision is currently held in the running app state; persistent project storage is part of the next technical slice.
+Use **Mark in scope** when the request is genuinely covered by the agreement. Use **Create change request** when it needs clarification, a price, a new estimate or formal approval. Decisions and notes are saved in this browser only; shared project storage is part of the next technical slice.
 
 ## The demo scenario
 
@@ -230,7 +230,7 @@ Example:
   pattern: "dashboard|partner portal|mobile app"
   titleStyle: subject_not_in_scope
   severity: high
-  confidence: 94
+  confidence: 94 # rule signal, not a measured probability
   minHours: 32
   maxHours: 40
   scopeTerms:
@@ -262,15 +262,15 @@ The intended operating habit is simple: review the queue before accepting new wo
 
 - Source files are parsed locally in the browser in this prototype.
 - No client content is sent to an external API by the current implementation.
-- The app does not yet save projects, uploaded files, review notes or decisions across a page reload. The “Saved locally” label is part of the current product surface, not a completed persistence layer.
+- The app saves the current project, uploaded files, review notes and decisions in versioned browser storage on this device. It is not a shared backend and should not be treated as team history or backup.
 - PDF and DOCX files are recognized but intentionally rejected until extraction adapters are added.
 - Direct Slack, Gmail and WhatsApp integrations are not implemented yet; export adapters are available and live pilot connectors are the next open-source slice. Facebook Messenger, additional mailbox providers, CRM and ERP integrations are not part of the open-source pilot.
 - The JSON parser supports common Telegram, Facebook Messenger and Slack-style arrays and objects with a `messages` array. It looks for fields such as `text`, `message`, `body` or `content`, including Telegram's array-of-text-fragments format.
 - WhatsApp text exports are treated as message sources when their filename includes `WhatsApp`, `chat` or a similar channel hint.
 - Scope extraction currently focuses on Markdown-style headings and bullet or numbered list items.
-- Rule matching is lexical and deterministic. It does not yet understand full contractual context, negation, speaker authority or conversation history.
-- “Scope coverage” is currently a simple prototype metric based on message count versus extracted scope-item count. It should not be interpreted as a percentage of contractual compliance.
-- The export button and project switcher are visual product-surface placeholders in this slice.
+- Rule matching is lexical and deterministic. The pilot now handles basic negation, sender role hints, included/excluded clauses, stable finding IDs and multiple rule matches, but it does not understand full contractual context or conversation history.
+- “With scope basis” is the share of parsed messages for which at least one configured rule found a related scope clause. It is not a percentage of contractual compliance.
+- Direct API integrations, shared workspaces and project switching remain outside this pilot slice.
 
 ## Technical shape
 
@@ -320,7 +320,7 @@ The next useful steps are:
 
 1. Add PDF and DOCX extraction adapters.
 2. Add rule-level tests with labelled scope-drift fixtures.
-3. Persist projects, sources, findings, notes and decisions in local SQLite or another explicit local store.
+3. Add shared authenticated workspaces and audit history; device-local persistence is already available for the pilot.
 4. Turn a `Change request` decision into an editable, exportable draft.
 5. Improve clause matching and conversation context.
 6. Add optional live OAuth/API connectors for Slack, Gmail and WhatsApp after the export-based pilot.

@@ -40,7 +40,42 @@ Date: 2026-08-02
 
 ## Remaining prototype limitations
 
-- Export report, help, workspace switcher, account menu and new project are visual placeholders.
+- Shared workspace switching, account menus and team collaboration are intentionally outside the local pilot; export report, help and new local project are functional.
 - Uploaded source content and review decisions remain in React state and are not persisted across a page reload.
 - Direct Telegram, WhatsApp Business and Facebook Messenger integrations are not implemented; the current workflow uses exported files.
 - PDF/DOCX extraction adapters are still pending.
+# ScopeGuard browser QA
+
+Date: 2026-08-02
+
+## Scope
+
+- Route: `/`
+- Local URL: `http://127.0.0.1:4173/`
+- Desktop viewport: 1280 × 720
+- Mobile viewport: iPhone 13 emulation
+
+## Checks completed
+
+- Production build starts and serves the application.
+- Desktop render shows the workspace, evidence cards, source panel and onboarding tour.
+- Mobile render shows the responsive brand bar, breadcrumbs, action buttons and onboarding card without a blank page.
+- Initial demo workspace shows four findings.
+- Two source classification controls are present.
+- The onboarding tour can be skipped.
+- `Run analysis` completes and returns `Analysis complete`.
+- Console errors: none during the smoke test.
+- Source validation and source management are covered by unit tests; browser automation used the demo workspace for the smoke test.
+
+## Result
+
+PASS for the local pilot slice. The application is ready for a controlled export-based pilot, with the documented limitations that analysis remains deterministic and local, shared workspaces are not available, and PDF/DOCX extraction is not enabled.
+
+## Frontend pilot flow
+
+- Demo mode is visibly labelled and offers a direct path to an empty project.
+- A named local project can be created from the sidebar.
+- Two in-memory test files (scope TXT + Slack JSON) were uploaded through the real file input.
+- The source list showed both files, the status changed to `Ready to analyse`, and the analysis completed with one finding.
+- No console errors occurred during the full flow.
+- The onboarding dialog receives focus when opened and remains dismissible with `Escape`.

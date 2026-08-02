@@ -1,10 +1,11 @@
 import { parse } from 'yaml'
 import rulesText from './rules.yaml?raw'
 import { detectPilotChannel, parsePilotExport } from './connectors'
-import type { PilotChannel } from './connectors'
+import type { ConnectorMessage, MessageRole, PilotChannel } from './connectors'
 
 export type SourceKind = 'scope' | 'messages' | 'unknown'
 export type SourceFormat = 'txt' | 'md' | 'eml' | 'json' | 'pdf' | 'docx' | 'unknown'
+export type ScopeMatch = 'included' | 'excluded' | 'ambiguous' | 'none'
 
 export type SourceDocument = {
   id: string
@@ -22,6 +23,7 @@ export type Finding = {
   excerpt: string
   source: string
   scope: string
+  scopeMatch: ScopeMatch
   hours: string
   confidence: number
   severity: 'high' | 'medium' | 'low'
@@ -33,9 +35,15 @@ export type AnalysisResult = {
   findings: Finding[]
   scopeItemsCount: number
   messagesCompared: number
+  messagesWithScopeBasis: number
   scopeCoverage: number
   hoursAtRisk: string
   unsupportedSources: string[]
+}
+
+export type SourceValidation = {
+  errors: string[]
+  warnings: string[]
 }
 
 type ScopeItem = {
@@ -49,6 +57,8 @@ type MessageRecord = {
   id: string
   text: string
   source: string
+  author?: string
+  role?: MessageRole
 }
 
 type RuleConfig = {
@@ -63,28 +73,11 @@ type RuleConfig = {
   scopeTerms: string[]
 }
 
-type Rule = {
-  type: string
-  pattern: RegExp
-  titleStyle: RuleConfig['titleStyle']
-  severity: Finding['severity']
-  confidence: number
-  minHours: number
-  maxHours: number
-  scopeTerms: string[]
-}
+type Rule = Omit<RuleConfig, 'pattern'> & { pattern: RegExp }
 
-const rulesDocument = parse(rulesText) as { rules: RuleConfig[] }
-const rules: Rule[] = rulesDocument.rules.map((config) => ({
-  type: config.type,
-  pattern: new RegExp(config.pattern, 'i'),
-  titleStyle: config.titleStyle,
-  severity: config.severity,
-  confidence: config.confidence,
-  minHours: config.minHours,
-  maxHours: config.maxHours,
-  scopeTerms: config.scopeTerms,
-}))
+export const MAX_SOURCE_BYTES = 10 * 1024 * 1024
+
+const rules = loadRules(rulesText)
 
 export const demoSources: SourceDocument[] = [
   {
@@ -106,7 +99,7 @@ export const demoSources: SourceDocument[] = [
 
 ## SOW §2.2 — Excluded work
 - No partner dashboard
-- No analytics implementation`,
+- No analytics implementation or funnel tracking`,
   },
   {
     id: 'demo-messages',
@@ -126,13 +119,19 @@ export const demoSources: SourceDocument[] = [
 export async function parseSourceFile(file: File): Promise<SourceDocument> {
   const format = getFormat(file.name)
 
+  if (file.size > MAX_SOURCE_BYTES) {
+    throw new Error(`${file.name}: file is larger than 10 MB. Export a smaller date range for the pilot.`)
+  }
+  if (format === 'unknown') {
+    throw new Error(`${file.name}: unsupported file type. Use TXT, MD, EML or JSON for the pilot.`)
+  }
   if (format === 'pdf' || format === 'docx') {
-    throw new Error(`${file.name}: PDF/DOCX extraction is the next adapter; use TXT, MD, EML or JSON for now.`)
+    throw new Error(`${file.name}: PDF/DOCX extraction is not enabled yet; use TXT, MD, EML or JSON for now.`)
   }
 
   const content = await file.text()
   return {
-    id: `${file.name}-${file.lastModified}-${file.size}`,
+    id: `${file.name}-${stableHash(content)}`,
     name: file.name,
     kind: inferKind(file.name, content),
     format,
@@ -141,20 +140,43 @@ export async function parseSourceFile(file: File): Promise<SourceDocument> {
   }
 }
 
+export function validateSources(sources: SourceDocument[]): SourceValidation {
+  const errors: string[] = []
+  const warnings: string[] = []
+  const scopeSources = sources.filter((source) => source.kind === 'scope')
+  const messageSources = sources.filter((source) => source.kind === 'messages')
+  const unknownSources = sources.filter((source) => source.kind === 'unknown')
+
+  if (!scopeSources.length) errors.push('Add at least one scope document (SOW, contract or brief).')
+  if (!messageSources.length) errors.push('Add at least one communication export from Slack, email or WhatsApp.')
+  if (unknownSources.length) warnings.push(`Unclassified sources will not be analysed: ${unknownSources.map((source) => source.name).join(', ')}.`)
+
+  if (scopeSources.length && !scopeSources.some((source) => extractScopeItems(source.id, source.content).length)) {
+    errors.push('The scope document has no readable bullet points. Use headings with bullet or numbered deliverables.')
+  }
+  if (messageSources.length && !messageSources.some((source) => extractMessages(source).length)) {
+    errors.push('The communication export has no readable messages. Check the export format or reclassify the source.')
+  }
+
+  return { errors, warnings }
+}
+
 export function analyzeSources(sources: SourceDocument[]): AnalysisResult {
   const scopeSources = sources.filter((source) => source.kind === 'scope')
   const messageSources = sources.filter((source) => source.kind === 'messages')
-  const scopeItems = scopeSources.flatMap((source) => extractScopeItems(source.content))
+  const scopeItems = scopeSources.flatMap((source) => extractScopeItems(source.id, source.content))
   const messages = messageSources.flatMap((source) => extractMessages(source))
-  const findings = messages.flatMap((message, index) => createFindings(message, index, scopeItems))
+  const findings = messages.flatMap((message) => createFindings(message, scopeItems))
   const totalMin = findings.reduce((sum, finding) => sum + parseHours(finding.hours)[0], 0)
   const totalMax = findings.reduce((sum, finding) => sum + parseHours(finding.hours)[1], 0)
-  const coverage = scopeItems.length === 0 ? 0 : Math.min(100, Math.round((messages.length / scopeItems.length) * 100))
+  const messagesWithScopeBasis = messages.filter((message) => rules.some((rule) => rule.pattern.test(message.text) && findScopeBasis(rule, message.text, scopeItems).status !== 'none')).length
+  const coverage = messages.length === 0 ? 0 : Math.round((messagesWithScopeBasis / messages.length) * 100)
 
   return {
     findings,
     scopeItemsCount: scopeItems.length,
     messagesCompared: messages.length,
+    messagesWithScopeBasis,
     scopeCoverage: coverage,
     hoursAtRisk: findings.length ? `${totalMin}–${totalMax}h` : '0h',
     unsupportedSources: sources.filter((source) => source.kind === 'unknown').map((source) => source.name),
@@ -163,12 +185,13 @@ export function analyzeSources(sources: SourceDocument[]): AnalysisResult {
 
 function inferKind(name: string, content: string): SourceKind {
   const lowerName = name.toLowerCase()
-  if (detectPilotChannel(name, content)) return 'messages'
-  if (/slack|email|message|messenger|telegram|whatsapp|facebook|meta|thread|chat|linear|jira/.test(lowerName)) return 'messages'
-  if (/(^|[-_.])(sow|scope|contract|agreement|brief|proposal)([-_.]|$)/.test(lowerName)) return 'scope'
-  if (content.match(/(^|\n)##?\s*(included|excluded|scope|deliverables)/i)) return 'scope'
-  if (content.match(/(^|\n)\s*(from|subject|date):/i)) return 'messages'
-  if (looksLikeMessageExport(content)) return 'messages'
+  const scopeNameSignal = /(^|[-_.])(sow|scope|contract|agreement|brief|proposal)([-_.]|$)/.test(lowerName)
+  const scopeContentSignal = /(^|\n)\s*#{1,6}\s*(included|excluded|scope|deliverables|assumptions|requirements)/im.test(content)
+  const messageNameSignal = /slack|email|message|messenger|telegram|whatsapp|facebook|meta|thread|chat|linear|jira/.test(lowerName)
+  const messageContentSignal = looksLikeMessageExport(content) || /(^|\n)\s*(from|subject|date):/im.test(content)
+
+  if (scopeNameSignal || scopeContentSignal) return 'scope'
+  if (messageNameSignal || messageContentSignal || detectPilotChannel(name, content)) return 'messages'
   return 'unknown'
 }
 
@@ -193,9 +216,9 @@ function getFormat(name: string): SourceFormat {
   return 'unknown'
 }
 
-function extractScopeItems(content: string): ScopeItem[] {
+function extractScopeItems(sourceId: string, content: string): ScopeItem[] {
   let currentSection = 'Scope'
-  let itemNumber = 0
+  const occurrences = new Map<string, number>()
 
   return content.split(/\r?\n/).flatMap((line) => {
     const trimmed = line.trim()
@@ -207,82 +230,115 @@ function extractScopeItems(content: string): ScopeItem[] {
     }
     const bullet = trimmed.match(/^(?:[-*•]|\d+[.)])\s+(.+)$/)
     if (!bullet || bullet[1].length < 5) return []
-    itemNumber += 1
+    const text = bullet[1].trim()
+    const key = normalizeForMatching(text)
+    const occurrence = occurrences.get(key) ?? 0
+    occurrences.set(key, occurrence + 1)
     return [{
-      id: `scope-${itemNumber}`,
+      id: `${sourceId}-scope-${stableHash(`${key}|${occurrence}`)}`,
       section: currentSection,
-      text: bullet[1].trim(),
-      excluded: /excluded|no |not included|out of scope/i.test(currentSection) || /^(no |not included|excluded)/i.test(bullet[1]),
+      text,
+      excluded: /excluded|no |not included|out of scope/i.test(currentSection) || /^(no |not included|excluded)/i.test(text),
     }]
   })
 }
 
 function extractMessages(source: SourceDocument): MessageRecord[] {
-  if (source.channel) return parsePilotExport(source.channel, source.name, source.content).map((message, index) => ({
-    id: `${source.id}-${index}`,
-    text: message.text,
-    source: message.source,
-  }))
-  if (source.format === 'json') return parseJsonMessages(source)
-  if (source.format === 'eml') return parseEmail(source)
+  const channel = source.channel ?? (source.format === 'json' ? 'slack' : source.format === 'eml' ? 'gmail' : undefined)
+  if (channel) return parsePilotExport(channel, source.name, source.content).map((message, index) => normalizeMessage(source, message, index))
 
-  return source.content.split(/\n\s*\n|\r?\n/).map((text, index) => text.trim()).filter(Boolean).map((text, index) => ({
-    id: `${source.id}-${index}`,
+  return source.content.split(/\n\s*\n|\r?\n/).map((text) => text.trim()).filter(Boolean).map((text, index) => ({
+    id: `${source.id}-${stableHash(`${normalizeForMatching(text)}|${index}`)}`,
     text,
     source: `${formatSourceName(source.name)} · message ${index + 1}`,
   }))
 }
 
-function parseJsonMessages(source: SourceDocument): MessageRecord[] {
-  try {
-    const parsed: unknown = JSON.parse(source.content)
-    const entries = Array.isArray(parsed) ? parsed : isRecord(parsed) && Array.isArray(parsed.messages) ? parsed.messages : []
-    return entries.flatMap((entry, index) => {
-      if (typeof entry === 'string') return [{ id: `${source.id}-${index}`, text: entry, source: `${formatSourceName(source.name)} · message ${index + 1}` }]
-      if (!isRecord(entry)) return []
-      const text = firstText(entry, ['text', 'message', 'body', 'content'])
-      if (!text) return []
-      const channel = firstText(entry, ['channel', 'source', 'type'])
-      const date = firstText(entry, ['date', 'ts', 'timestamp'])
-      return [{ id: `${source.id}-${index}`, text, source: [channel, date].filter(Boolean).join(' · ') || `${formatSourceName(source.name)} · message ${index + 1}` }]
-    })
-  } catch {
-    return []
+function normalizeMessage(source: SourceDocument, message: ConnectorMessage, index: number): MessageRecord {
+  const text = message.text.trim()
+  return {
+    id: `${source.id}-${message.id ?? stableHash(`${normalizeForMatching(text)}|${index}`)}`,
+    text,
+    source: message.source || `${formatSourceName(source.name)} · message ${index + 1}`,
+    author: message.author,
+    role: message.role,
   }
 }
 
-function parseEmail(source: SourceDocument): MessageRecord[] {
-  const lines = source.content.split(/\r?\n/)
-  const subject = lines.find((line) => /^subject:/i.test(line))?.replace(/^subject:\s*/i, '').trim()
-  const date = lines.find((line) => /^date:/i.test(line))?.replace(/^date:\s*/i, '').trim()
-  const bodyStart = lines.findIndex((line) => line.trim() === '')
-  const body = lines.slice(bodyStart + 1).join('\n').trim()
-  return body ? [{ id: source.id, text: subject ? `${subject}: ${body}` : body, source: [formatSourceName(source.name), date].filter(Boolean).join(' · ') }] : []
+function createFindings(message: MessageRecord, scopeItems: ScopeItem[]): Finding[] {
+  return rules.flatMap((rule) => {
+    if (!rule.pattern.test(message.text)) return []
+    if (rule.id === 'unpriced_commitment' && message.role === 'client') return []
+    if (isNegatedSignal(rule, message.text)) return []
+
+    const scopeMatch = findScopeBasis(rule, message.text, scopeItems)
+    if (rule.id === 'new_deliverable' && scopeMatch.status === 'included') return []
+
+    const confidence = adjustedConfidence(rule, scopeMatch.status)
+    const severity = adjustedSeverity(rule, scopeMatch.status)
+    return [{
+      id: `SG-${stableHash(`${message.id}|${rule.id}|${normalizeForMatching(message.text)}`)}`,
+      type: rule.type,
+      title: titleFromRule(rule.titleStyle, message.text),
+      excerpt: `“${message.text}”`,
+      source: message.author ? `${message.source} · ${message.author}` : message.source,
+      scope: scopeMatch.label,
+      scopeMatch: scopeMatch.status,
+      hours: `${rule.minHours}–${rule.maxHours}h`,
+      confidence,
+      severity,
+      reviewed: false,
+      decision: 'pending',
+    }]
+  })
 }
 
-function createFindings(message: MessageRecord, index: number, scopeItems: ScopeItem[]): Finding[] {
-  const rule = rules.find((candidate) => candidate.pattern.test(message.text))
-  if (!rule) return []
-  const scope = findScopeBasis(rule, message.text, scopeItems)
-  return [{
-    id: `SG-${String(14 - index).padStart(3, '0')}`,
-    type: rule.type,
-    title: titleFromRule(rule.titleStyle, message.text),
-    excerpt: `“${message.text}”`,
-    source: message.source,
-    scope,
-    hours: `${rule.minHours}–${rule.maxHours}h`,
-    confidence: rule.confidence,
-    severity: rule.severity,
-    reviewed: false,
-    decision: 'pending',
-  }]
+function findScopeBasis(rule: Rule, text: string, scopeItems: ScopeItem[]): { status: ScopeMatch; label: string } {
+  const normalizedText = normalizeForMatching(text)
+  const textTokens = new Set(tokensFrom(normalizedText))
+  const candidates = scopeItems.map((item) => {
+    const itemText = normalizeForMatching(`${item.section} ${item.text}`)
+    const itemTokens = new Set(tokensFrom(itemText))
+    let score = 0
+
+    for (const term of rule.scopeTerms) {
+      const variants = expandTerm(term)
+      const textMatches = variants.some((variant) => hasTerm(normalizedText, variant))
+      const itemMatches = variants.some((variant) => hasTerm(itemText, variant))
+      if (textMatches && itemMatches) score += 5
+    }
+    for (const token of textTokens) {
+      if (token.length > 4 && itemTokens.has(token)) score += 1
+    }
+    if (score > 0 && item.excluded) score += 0.25
+    return { item, score }
+  }).filter((candidate) => candidate.score > 0)
+
+  if (!candidates.length) return { status: 'none', label: 'No matching clause found' }
+  candidates.sort((left, right) => right.score - left.score || Number(right.item.excluded) - Number(left.item.excluded))
+  const best = candidates[0]
+  const tied = candidates.filter((candidate) => Math.abs(candidate.score - best.score) < 0.01)
+  const status: ScopeMatch = tied.length > 1 ? 'ambiguous' : best.item.excluded ? 'excluded' : 'included'
+  const prefix = status === 'excluded' ? 'Excluded' : status === 'included' ? 'Included' : 'Ambiguous'
+  return { status, label: `${prefix} · ${best.item.section} · ${best.item.text}` }
 }
 
-function findScopeBasis(rule: Rule, text: string, scopeItems: ScopeItem[]): string {
-  const terms = [...rule.scopeTerms, ...text.toLowerCase().split(/\W+/).filter((word) => word.length > 5)]
-  const match = scopeItems.find((item) => terms.some((term) => item.text.toLowerCase().includes(term)))
-  return match ? `${match.section} · ${match.text}` : 'No matching clause found'
+function adjustedConfidence(rule: Rule, scopeMatch: ScopeMatch): number {
+  const adjustment = scopeMatch === 'none' ? -15 : scopeMatch === 'ambiguous' ? -20 : scopeMatch === 'included' ? -8 : 0
+  return Math.max(35, Math.min(99, rule.confidence + adjustment))
+}
+
+function adjustedSeverity(rule: Rule, scopeMatch: ScopeMatch): Finding['severity'] {
+  if (rule.id === 'unpriced_commitment' && scopeMatch === 'included') return 'low'
+  if (scopeMatch === 'ambiguous' && rule.severity === 'high') return 'medium'
+  return rule.severity
+}
+
+function isNegatedSignal(rule: Rule, text: string): boolean {
+  const match = rule.pattern.exec(text)
+  if (!match || match.index === undefined) return false
+  const context = text.slice(Math.max(0, match.index - 60), match.index + match[0].length + 80)
+  return /\b(?:not|no|never|won't|wouldn't|isn't|aren't|don't|do not|out of scope|not going to|will not)\b/i.test(context)
 }
 
 function extractSubject(text: string): string {
@@ -298,24 +354,63 @@ function titleFromRule(style: RuleConfig['titleStyle'], text: string): string {
   return 'A delivery commitment appears without a matching price'
 }
 
-function formatSourceName(name: string): string {
-  return name.replace(/\.[^.]+$/, '')
+function loadRules(text: string): Rule[] {
+  try {
+    const parsed: unknown = parse(text)
+    if (!isRecord(parsed) || !Array.isArray(parsed.rules)) throw new Error('rules must contain a rules list')
+    return parsed.rules.map((value, index) => {
+      if (!isRecord(value) || !isRuleConfig(value)) throw new Error(`rule ${index + 1} is invalid`)
+      return { ...value, pattern: new RegExp(value.pattern, 'i') }
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown YAML error'
+    throw new Error(`ScopeGuard rules could not be loaded: ${message}`)
+  }
 }
 
-function firstText(record: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = record[key]
-    if (typeof value === 'string' && value.trim()) return value.trim()
-    if (Array.isArray(value)) {
-      const text = value.map((part) => {
-        if (typeof part === 'string') return part
-        if (isRecord(part) && typeof part.text === 'string') return part.text
-        return ''
-      }).join('').trim()
-      if (text) return text
-    }
+function isRuleConfig(value: Record<string, unknown>): value is Record<string, unknown> & RuleConfig {
+  return typeof value.id === 'string'
+    && typeof value.type === 'string'
+    && typeof value.pattern === 'string'
+    && typeof value.titleStyle === 'string'
+    && ['high', 'medium', 'low'].includes(String(value.severity))
+    && typeof value.confidence === 'number'
+    && typeof value.minHours === 'number'
+    && typeof value.maxHours === 'number'
+    && Array.isArray(value.scopeTerms)
+    && value.scopeTerms.every((term) => typeof term === 'string')
+}
+
+function expandTerm(term: string): string[] {
+  const normalized = normalizeForMatching(term)
+  const aliases: Record<string, string[]> = {
+    analytics: ['analytics', 'track', 'tracked', 'tracking'],
+    tracking: ['analytics', 'track', 'tracked', 'tracking'],
+    revision: ['revision', 'revisions', 'pass', 'round', 'rounds'],
+    round: ['revision', 'revisions', 'pass', 'round', 'rounds'],
   }
-  return undefined
+  return aliases[normalized] ?? [normalized]
+}
+
+function hasTerm(text: string, term: string): boolean {
+  const normalized = normalizeForMatching(term)
+  return normalized ? new RegExp(`(?:^|\\s)${escapeRegExp(normalized)}(?:$|\\s)`).test(text) : false
+}
+
+function normalizeForMatching(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function tokensFrom(value: string): string[] {
+  return value.split(' ').filter((token) => token.length > 2 && !['the', 'and', 'for', 'with', 'this', 'that', 'from', 'into', 'will', 'can'].includes(token))
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function formatSourceName(name: string): string {
+  return name.replace(/\.[^.]+$/, '')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -325,4 +420,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseHours(value: string): [number, number] {
   const matches = value.match(/(\d+)–(\d+)/)
   return matches ? [Number(matches[1]), Number(matches[2])] : [0, 0]
+}
+
+function stableHash(value: string): string {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
 }

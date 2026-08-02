@@ -16,7 +16,7 @@ ScopeGuard is a local-first evidence review tool for small agencies. It compares
 
 - project context and saved-local status;
 - clear analysis state;
-- amount of scope coverage and hours at risk;
+- share of messages with a scope basis and preliminary exposure hours;
 - evidence list with filters for all, high risk and unreviewed;
 - source list with add/drop affordance;
 - local-first privacy reassurance;

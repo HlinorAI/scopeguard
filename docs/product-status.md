@@ -25,7 +25,7 @@ The product has two distinct surfaces:
 1. **Hosted user-facing app** — for finance, sales, account and delivery teams. It must work in a browser with a shared link, sign-in and no terminal usage.
 2. **Open-source repository** — for developers, contributors and technical operators who inspect, extend or self-host the core.
 
-Finance and sales users are not expected to use GitHub, Node.js or npm. The hosted browser pilot is now available at https://scopeguard.atvbox.chatgpt.site. The current release is private, local-first and intentionally limited: it does not yet persist projects, decisions or team history.
+Finance and sales users are not expected to use GitHub, Node.js or npm. The hosted browser pilot is now available at https://scopeguard.atvbox.chatgpt.site. The current release is private, local-first and intentionally limited: it persists the active workspace on the current device, but does not yet provide shared projects, authentication or team history.
 
 ## 2. How the current MVP works
 
@@ -100,7 +100,7 @@ Each finding contains:
 - source;
 - closest scope clause;
 - severity;
-- confidence;
+- rule signal strength;
 - estimated hours at risk.
 
 ### Human-in-the-loop review
@@ -204,7 +204,7 @@ This is the next commercial layer after the Slack/Gmail/WhatsApp pilot.
 
 - Direct Slack, Gmail and WhatsApp integrations are planned as the next open-source pilot slice; export adapters are already available.
 - Multi-user invites, persistent workspaces and team access controls.
-- Persistent project, source and review storage.
+- Shared persistent project, source and review storage.
 - Backend and authentication.
 - Persistent storage after a page reload.
 - Team collaboration.
@@ -216,7 +216,7 @@ This is the next commercial layer after the Slack/Gmail/WhatsApp pilot.
 - CRM/ERP functionality in the open-source repository.
 - Billing and enterprise controls.
 
-The current `Saved locally` label is part of the product surface; a complete persistence layer is not connected yet.
+The current `Saved on this device` label reflects versioned browser persistence. It is intentionally not a shared backend or a backup system.
 
 ## 8. Technical status
 
