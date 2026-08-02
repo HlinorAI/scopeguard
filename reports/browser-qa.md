@@ -23,6 +23,8 @@ Date: 2026-08-01
 - Visible `browse` upload control accepts a non-sensitive QA fixture and adds its filename to the source list.
 - Two local fixtures (scope TXT + message JSON) are classified, imported and used to recompute findings and metrics after `Run analysis`.
 - Unsupported PDF input is rejected with a visible, actionable error and does not enter the source list.
+- Review flow accepts a decision note, supports `Create change request`, `Mark in scope` and `Reopen`, and updates the unreviewed metric.
+- Review controls fit at 375px mobile width without horizontal overflow.
 - Console error and warning logs were empty during the tested flows.
 - No external images or broken media are used.
 

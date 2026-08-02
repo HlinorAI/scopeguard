@@ -1,3 +1,6 @@
+import { parse } from 'yaml'
+import rulesText from './rules.yaml?raw'
+
 export type SourceKind = 'scope' | 'messages' | 'unknown'
 export type SourceFormat = 'txt' | 'md' | 'eml' | 'json' | 'pdf' | 'docx' | 'unknown'
 
@@ -20,6 +23,7 @@ export type Finding = {
   confidence: number
   severity: 'high' | 'medium' | 'low'
   reviewed: boolean
+  decision: 'pending' | 'change_request' | 'in_scope'
 }
 
 export type AnalysisResult = {
@@ -44,10 +48,11 @@ type MessageRecord = {
   source: string
 }
 
-type Rule = {
+type RuleConfig = {
+  id: string
   type: string
-  pattern: RegExp
-  title: (text: string) => string
+  pattern: string
+  titleStyle: 'subject_not_in_scope' | 'changes_expectation' | 'extra_revision' | 'unpriced_commitment'
   severity: Finding['severity']
   confidence: number
   minHours: number
@@ -55,48 +60,28 @@ type Rule = {
   scopeTerms: string[]
 }
 
-const rules: Rule[] = [
-  {
-    type: 'NEW DELIVERABLE',
-    pattern: /dashboard|partner portal|mobile app|new page|additional integration|new integration/i,
-    title: (text) => `${extractSubject(text)} is not in the agreed scope`,
-    severity: 'high',
-    confidence: 94,
-    minHours: 32,
-    maxHours: 40,
-    scopeTerms: ['dashboard', 'partner', 'marketing site', 'integration'],
-  },
-  {
-    type: 'ACCEPTANCE CRITERIA',
-    pattern: /real[- ]?time|instantly|without (refreshing|reloading)|pixel[- ]perfect|live updates/i,
-    title: (text) => `${extractSubject(text)} changes the delivery expectation`,
-    severity: 'medium',
-    confidence: 82,
-    minHours: 8,
-    maxHours: 12,
-    scopeTerms: ['status', 'sync', 'acceptance', 'criteria'],
-  },
-  {
-    type: 'EXTRA REVISION',
-    pattern: /one more pass|one last pass|another revision|fourth revision|additional revision|extra round/i,
-    title: () => 'An additional revision round was requested',
-    severity: 'high',
-    confidence: 98,
-    minHours: 4,
-    maxHours: 6,
-    scopeTerms: ['revision', 'round'],
-  },
-  {
-    type: 'UNPRICED COMMITMENT',
-    pattern: /\b(we will|we'll|we can|make sure|add)\b/i,
-    title: () => 'A delivery commitment appears without a matching price',
-    severity: 'medium',
-    confidence: 71,
-    minHours: 6,
-    maxHours: 10,
-    scopeTerms: ['analytics', 'tracking', 'commitment', 'price'],
-  },
-]
+type Rule = {
+  type: string
+  pattern: RegExp
+  titleStyle: RuleConfig['titleStyle']
+  severity: Finding['severity']
+  confidence: number
+  minHours: number
+  maxHours: number
+  scopeTerms: string[]
+}
+
+const rulesDocument = parse(rulesText) as { rules: RuleConfig[] }
+const rules: Rule[] = rulesDocument.rules.map((config) => ({
+  type: config.type,
+  pattern: new RegExp(config.pattern, 'i'),
+  titleStyle: config.titleStyle,
+  severity: config.severity,
+  confidence: config.confidence,
+  minHours: config.minHours,
+  maxHours: config.maxHours,
+  scopeTerms: config.scopeTerms,
+}))
 
 export const demoSources: SourceDocument[] = [
   {
@@ -260,7 +245,7 @@ function createFindings(message: MessageRecord, index: number, scopeItems: Scope
   return [{
     id: `SG-${String(14 - index).padStart(3, '0')}`,
     type: rule.type,
-    title: rule.title(message.text),
+    title: titleFromRule(rule.titleStyle, message.text),
     excerpt: `“${message.text}”`,
     source: message.source,
     scope,
@@ -268,6 +253,7 @@ function createFindings(message: MessageRecord, index: number, scopeItems: Scope
     confidence: rule.confidence,
     severity: rule.severity,
     reviewed: false,
+    decision: 'pending',
   }]
 }
 
@@ -281,6 +267,13 @@ function extractSubject(text: string): string {
   const subject = text.match(/(?:add|for|about)\s+(?:a\s+|an\s+|the\s+)?([^?.!]+?)(?:\s+before|\s+without|\s+for\s+partners|$)/i)?.[1]
   const cleaned = subject ? subject.trim().replace(/^lightweight\s+/i, '').replace(/\s+$/, '') : 'This request'
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+}
+
+function titleFromRule(style: RuleConfig['titleStyle'], text: string): string {
+  if (style === 'subject_not_in_scope') return `${extractSubject(text)} is not in the agreed scope`
+  if (style === 'changes_expectation') return `${extractSubject(text)} changes the delivery expectation`
+  if (style === 'extra_revision') return 'An additional revision round was requested'
+  return 'A delivery commitment appears without a matching price'
 }
 
 function formatSourceName(name: string): string {

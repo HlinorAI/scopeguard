@@ -2,7 +2,7 @@
 
 ## Current slice
 
-The first two slices are a responsive React/Vite local-first review workspace and a deterministic ingestion/analyzer core. The workspace ships with demo sources, but the same path now accepts local TXT, MD, EML and JSON files and produces findings from their contents.
+The current slice is a responsive React/Vite local-first review workspace, a deterministic ingestion/analyzer core and a configurable decision workflow. The workspace ships with demo sources, but the same path now accepts local TXT, MD, EML and JSON files and produces findings from their contents.
 
 ## Decisions
 
@@ -10,13 +10,15 @@ The first two slices are a responsive React/Vite local-first review workspace an
 - Sources are normalized into `SourceDocument` records with a scope/messages/unknown kind and an explicit format.
 - TXT/MD, EML and common Slack-style JSON message exports are parsed locally in `src/analysis.ts`.
 - The analyzer runs deterministic rules for new deliverables, acceptance criteria, extra revisions and unpriced commitments.
+- Rule patterns, confidence, severity and hour ranges are configured in `src/rules.yaml` and parsed at build time.
 - “Run analysis” now recomputes findings, coverage, message count and hours at risk from the current sources.
 - PDF/DOCX are rejected with an explicit next-adapter message instead of pretending they were parsed.
 - Findings are explicitly evidence-backed and use “potential” language.
+- A reviewer can add a note, mark a finding in scope, create a change request decision, reopen it, and use the unreviewed filter as a queue.
 
 ## Next technical slice
 
 1. Add PDF/DOCX extraction adapters.
-2. Move rules into YAML and add rule-level tests against a labelled fixture set.
-3. Persist projects, sources and findings in local SQLite.
-4. Add evidence spans and a change-request draft from a reviewed finding.
+2. Add rule-level tests against a labelled fixture set.
+3. Persist projects, sources, review decisions and findings in local SQLite.
+4. Turn the change-request decision into an editable/exportable draft.

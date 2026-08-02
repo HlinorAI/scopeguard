@@ -16,6 +16,8 @@ function App() {
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [analysisReady, setAnalysisReady] = useState(true)
   const [sourceError, setSourceError] = useState<string | null>(null)
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({})
   const [isDragging, setIsDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
 
@@ -59,16 +61,29 @@ function App() {
       setFindings((current) => nextAnalysis.findings.map((finding) => ({
         ...finding,
         reviewed: current.find((previous) => previous.id === finding.id)?.reviewed ?? false,
+        decision: current.find((previous) => previous.id === finding.id)?.decision ?? 'pending',
       })))
       setIsAnalysing(false)
       setAnalysisReady(true)
     }, 350)
   }
 
-  const toggleReviewed = (id: string) => {
+  const openReview = (id: string) => {
+    setReviewingId((current) => current === id ? null : id)
+  }
+
+  const decideFinding = (id: string, decision: Finding['decision']) => {
     setFindings((current) => current.map((finding) => (
-      finding.id === id ? { ...finding, reviewed: !finding.reviewed } : finding
+      finding.id === id ? { ...finding, reviewed: true, decision } : finding
     )))
+    setReviewingId(null)
+  }
+
+  const reopenFinding = (id: string) => {
+    setFindings((current) => current.map((finding) => (
+      finding.id === id ? { ...finding, reviewed: false, decision: 'pending' } : finding
+    )))
+    setReviewingId(id)
   }
 
   return (
@@ -139,7 +154,16 @@ function App() {
             <div className="evidence-column">
               <div className="section-heading"><div><p className="eyebrow">EVIDENCE REVIEW</p><h2>Potential scope drift</h2></div><div className="filter-tabs" role="tablist" aria-label="Finding filters">{(['all', 'high', 'unreviewed'] as const).map((item) => <button className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} role="tab" type="button">{item === 'all' ? 'All findings' : item === 'high' ? 'High risk' : 'Unreviewed'}</button>)}</div></div>
               <div className="finding-list">
-                {visibleFindings.map((finding) => <FindingCard finding={finding} key={finding.id} onToggleReviewed={toggleReviewed} />)}
+                {visibleFindings.map((finding) => <FindingCard
+                  finding={finding}
+                  isReviewing={reviewingId === finding.id}
+                  key={finding.id}
+                  note={reviewNotes[finding.id] ?? ''}
+                  onDecide={decideFinding}
+                  onNoteChange={(note) => setReviewNotes((current) => ({ ...current, [finding.id]: note }))}
+                  onOpenReview={openReview}
+                  onReopen={reopenFinding}
+                />)}
                 {!visibleFindings.length && <div className="empty-state"><strong>Nothing waiting here.</strong><span>Every finding in this view has been reviewed.</span></div>}
               </div>
             </div>
@@ -161,13 +185,30 @@ function App() {
   )
 }
 
-function FindingCard({ finding, onToggleReviewed }: { finding: Finding; onToggleReviewed: (id: string) => void }) {
+function FindingCard({
+  finding,
+  isReviewing,
+  note,
+  onDecide,
+  onNoteChange,
+  onOpenReview,
+  onReopen,
+}: {
+  finding: Finding
+  isReviewing: boolean
+  note: string
+  onDecide: (id: string, decision: Finding['decision']) => void
+  onNoteChange: (note: string) => void
+  onOpenReview: (id: string) => void
+  onReopen: (id: string) => void
+}) {
   return <article className={`finding-card ${finding.reviewed ? 'is-reviewed' : ''}`}>
     <div className="finding-topline"><span className={`severity-dot ${finding.severity}`} /><span className="finding-type">{finding.type}</span><span className="finding-id">{finding.id}</span></div>
     <h3>{finding.title}</h3>
     <blockquote>{finding.excerpt}</blockquote>
     <div className="finding-meta"><span><b>Source</b>{finding.source}</span><span><b>Scope basis</b>{finding.scope}</span></div>
-    <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div><button className={`review-button ${finding.reviewed ? 'done' : ''}`} onClick={() => onToggleReviewed(finding.id)} type="button">{finding.reviewed ? 'Reviewed ✓' : 'Review finding →'}</button></div>
+    <div className="finding-bottom"><div className="finding-estimate"><span>Estimated exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% confidence</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
+    {isReviewing && !finding.reviewed && <div className="review-panel"><label htmlFor={`review-note-${finding.id}`}>Decision note <span>optional</span></label><textarea id={`review-note-${finding.id}`} onChange={(event) => onNoteChange(event.target.value)} placeholder="Why should the team act on this finding?" value={note} /><div className="review-actions"><button className="in-scope-button" onClick={() => onDecide(finding.id, 'in_scope')} type="button">Mark in scope</button><button className="change-request-button" onClick={() => onDecide(finding.id, 'change_request')} type="button">Create change request <span>→</span></button></div></div>}
   </article>
 }
 
@@ -175,6 +216,12 @@ function sourceKindLabel(kind: SourceDocument['kind']): string {
   if (kind === 'scope') return 'Scope document'
   if (kind === 'messages') return 'Communication export'
   return 'Unclassified source'
+}
+
+function decisionLabel(decision: Finding['decision']): string {
+  if (decision === 'change_request') return 'Change request ✓'
+  if (decision === 'in_scope') return 'Marked in scope ✓'
+  return 'Reviewed ✓'
 }
 
 export default App
