@@ -30,7 +30,7 @@ Finance and sales users are not expected to use GitHub, Node.js or npm. The host
 ## 2. How the current MVP works
 
 ```text
-SOW / contract + client communication
+SOW / contract / brief / initial order email + client communication
                 ↓
           Local file upload
                 ↓
@@ -47,7 +47,7 @@ SOW / contract + client communication
 
 The current workflow is:
 
-1. Upload a scope document.
+1. Upload a scope document or initial order email.
 2. Upload a communication export.
 3. Run the analysis.
 4. Review potential scope-drift findings.
@@ -71,7 +71,7 @@ The current workflow is:
 
 | Source | Current method | Status |
 | --- | --- | --- |
-| SOW / contract / brief | TXT, MD | Working |
+| SOW / contract / brief / initial order email | TXT, MD (including common RTF-in-MD order exports), EML | Working |
 | Gmail and other email services | EML or text export | Working through export |
 | Slack | JSON or text export | Working through export |
 | Telegram | JSON export | Working through export |

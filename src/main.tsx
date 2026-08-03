@@ -102,6 +102,7 @@ function App() {
 
   const reclassifySource = (id: string, kind: SourceDocument['kind']) => {
     setSources((current) => current.map((source) => source.id === id ? { ...source, kind } : source))
+    setSourceError(null)
     setAnalysisReady(false)
     setReviewingId(null)
   }

@@ -8,7 +8,7 @@ The current slice is a responsive React/Vite local-first review workspace, a det
 
 - No external UI library yet; the surface is small and the visual language is custom.
 - Sources are normalized into `SourceDocument` records with a scope/messages/unknown kind and an explicit format.
-- TXT/MD, EML and common Telegram, WhatsApp, Facebook Messenger and Slack JSON exports are parsed locally in `src/analysis.ts`.
+- TXT/MD, RTF-in-MD, EML and common Telegram, WhatsApp, Facebook Messenger and Slack JSON exports are parsed locally in `src/analysis.ts`.
 - The analyzer runs deterministic rules for new deliverables, acceptance criteria, extra revisions and unpriced commitments.
 - Rule patterns, rule signal strength, severity and hour ranges are configured in `src/rules.yaml` and validated at build time.
 - “Run analysis” now recomputes findings, the percentage of messages with a scope basis, message count and preliminary exposure from the current sources.
@@ -20,6 +20,8 @@ The current slice is a responsive React/Vite local-first review workspace, a det
 - Review reports and approved change requests can be exported as Markdown files without sending project data to an external service.
 - Pilot safeguards include a 10 MB source limit, required scope/message source validation, source reclassification and removal, stable finding IDs, basic negation and sender-role handling, included/excluded scope matching, and multipart email/plain-text Slack fallbacks.
 - The pilot visual system remains the original warm paper/ink/orange workspace design; the page header and demo banner have explicit layout styles so pilot-state additions do not fall back to browser defaults.
+- An initial order email can be used as the scope source: order/request-style filenames are scope candidates, and manually reclassified prose emails produce scope items without requiring Markdown bullets.
+- RTF order exports saved with an `.md` extension are normalized locally; cancellation/reply email filenames stay communication candidates even when their quoted history mentions order totals.
 
 ## Next technical slice
 

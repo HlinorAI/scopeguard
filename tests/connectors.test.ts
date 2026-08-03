@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeSources, demoSources, validateSources } from '../src/analysis'
+import { analyzeSources, demoSources, parseSourceFile, validateSources } from '../src/analysis'
 import { detectPilotChannel, parsePilotExport } from '../src/connectors'
 
 describe('pilot channel adapters', () => {
@@ -139,5 +139,62 @@ describe('scope analysis', () => {
     const validation = validateSources([demoSources[0]])
 
     expect(validation.errors).toContain('Add at least one communication export from Slack, email or WhatsApp.')
+  })
+
+  it('accepts a prose initial order email as the scope source', () => {
+    const sources = [
+      {
+        id: 'initial-order',
+        name: 'initial-order.eml',
+        kind: 'scope' as const,
+        format: 'eml' as const,
+        content: [
+          'From: client@example.com',
+          'Subject: Website order',
+          '',
+          'We need a public marketing site with a responsive mobile layout.',
+        ].join('\n'),
+      },
+      {
+        ...demoSources[1],
+        content: JSON.stringify([{ user: 'Client', text: 'Can we add a partner dashboard?' }]),
+      },
+    ]
+
+    expect(validateSources(sources).errors).toEqual([])
+    expect(analyzeSources(sources).scopeItemsCount).toBe(1)
+  })
+
+  it('classifies an initial order filename as a scope candidate', async () => {
+    const source = await parseSourceFile(new File([
+      'From: client@example.com\nSubject: Website order\n\nWe need a public marketing site.',
+    ], 'initial-order.eml'))
+
+    expect(source.kind).toBe('scope')
+  })
+
+  it('classifies a structured conversation text export as messages', async () => {
+    const source = await parseSourceFile(new File([
+      '2026-08-03 10:00 | Client | Can we add a dashboard?',
+    ], 'conversation.txt'))
+
+    expect(source.kind).toBe('messages')
+  })
+
+  it('classifies and reads an RTF order export as a scope source', async () => {
+    const source = await parseSourceFile(new File([
+      '{\\rtf1\\ansi\\uc0 This is a new order\\par Product: Trail rack\\par Quantity: 1\\par Total cost: 100 CAD}',
+    ], '2607-22.md'))
+
+    expect(source.kind).toBe('scope')
+    expect(analyzeSources([source, demoSources[1]]).scopeItemsCount).toBeGreaterThan(0)
+  })
+
+  it('keeps a cancellation reply email in communications', async () => {
+    const source = await parseSourceFile(new File([
+      'From: seller@example.com\nSubject: RE: order cancellation\nDate: Sun, 02 Aug 2026\n\nThe order will not proceed. The quoted history mentions a shipping cost and total cost.',
+    ], 'RE_order_cancellation.eml'))
+
+    expect(source.kind).toBe('messages')
   })
 })
