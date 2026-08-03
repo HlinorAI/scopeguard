@@ -25,7 +25,7 @@ The product has two distinct surfaces:
 1. **Hosted user-facing app** — for finance, sales, account and delivery teams. It must work in a browser with a shared link, sign-in and no terminal usage.
 2. **Open-source repository** — for developers, contributors and technical operators who inspect, extend or self-host the core.
 
-Finance and sales users are not expected to use GitHub, Node.js or npm. The hosted browser pilot is now available at https://scopeguard.atvbox.chatgpt.site. The current release is private, local-first and intentionally limited: it persists the active workspace on the current device, but does not yet provide shared projects, authentication or team history.
+Finance and sales users are not expected to use GitHub, Node.js or npm. The hosted browser pilot is now available at https://scopeguard.hlinor.com. The current release is private, local-first and intentionally limited: it persists the active workspace on the current device, but does not yet provide shared projects, authentication or team history.
 
 ## 2. How the current MVP works
 
