@@ -29,7 +29,7 @@ Each message can sound harmless. Together, they create delivery work, approval r
 
 The current prototype runs entirely in the browser and supports this flow:
 
-1. Load a scope document and communication or work-record exports.
+1. Load a scope document or initial order email and communication or work-record exports.
 2. Normalize the local files into scope items and evidence records.
 3. Run deterministic, configurable rules against the messages.
 4. Show each potential scope-drift finding with its evidence, source and scope basis.
@@ -93,19 +93,19 @@ The current UI uses one local project at a time. **New local project** clears th
 
 ### 3. Add the source of truth
 
-Use **Add a source** to upload a scope document and communication export. You can remove a source or correct its classification before running the analysis. The current supported formats are:
+Use **Add a source** to upload a scope document or initial order email and a communication export. You can remove a source or correct its classification before running the analysis. If the agreed work is described in the first order email, select **Scope document** for that file in the source list and keep later correspondence as **Communication export**. The current supported formats are:
 
 | Format | Typical use | Current support |
 | --- | --- | --- |
 | `.txt` | SOW, agreement, proposal or brief | Supported |
-| `.md` | Markdown scope or delivery notes | Supported |
+| `.md` | Markdown scope, delivery notes or RTF order export saved with an `.md` extension | Supported |
 | `.eml` | One email message from Gmail, Outlook, Apple/iCloud, Proton, Yandex, Mail.ru or a custom domain | Supported |
 | `.json` | Telegram, Facebook Messenger, Slack-style or other message export | Supported |
 | `.csv` / `.xlsx` | CRM or ERP table export | Planned adapter |
 | `.pdf` | PDF agreement or export | Planned adapter |
 | `.docx` | Word agreement or export | Planned adapter |
 
-File type is inferred from the filename and content. Names containing terms such as `sow`, `scope`, `contract`, `agreement`, `brief` or `proposal` are treated as scope documents. Names containing `slack`, `email`, `telegram`, `whatsapp`, `messenger`, `facebook`, `message`, `thread`, `chat`, `linear` or `jira` are treated as communication sources.
+File type is inferred from the filename and content. Names containing terms such as `sow`, `scope`, `contract`, `agreement`, `brief`, `proposal`, `order`, `request`, `intake`, `kickoff` or `requirements` are treated as scope candidates. Names containing `slack`, `email`, `telegram`, `whatsapp`, `messenger`, `facebook`, `message`, `thread`, `chat`, `linear` or `jira` are treated as communication sources. You can always correct the classification in the source list.
 
 For the most reliable result, name files clearly. For example:
 
@@ -166,7 +166,7 @@ This keeps the open-source project useful and auditable while protecting the int
 
 Click **Run analysis** after both source types are loaded. ScopeGuard then:
 
-- extracts bullet points from the scope source;
+- extracts bullet points, clear prose deliverables or readable RTF order fields from the scope source;
 - extracts messages from the communication source;
 - applies the configured rules;
 - calculates the current finding list, the share of messages with a scope basis, message count and preliminary exposure hours.
@@ -267,7 +267,7 @@ The intended operating habit is simple: review the queue before accepting new wo
 - Direct Slack, Gmail and WhatsApp integrations are not implemented yet; export adapters are available and live pilot connectors are the next open-source slice. Facebook Messenger, additional mailbox providers, CRM and ERP integrations are not part of the open-source pilot.
 - The JSON parser supports common Telegram, Facebook Messenger and Slack-style arrays and objects with a `messages` array. It looks for fields such as `text`, `message`, `body` or `content`, including Telegram's array-of-text-fragments format.
 - WhatsApp text exports are treated as message sources when their filename includes `WhatsApp`, `chat` or a similar channel hint.
-- Scope extraction currently focuses on Markdown-style headings and bullet or numbered list items.
+- Scope extraction supports Markdown-style headings, bullet or numbered list items, clear prose in an initial order email and RTF order exports saved as `.md`.
 - Rule matching is lexical and deterministic. The pilot now handles basic negation, sender role hints, included/excluded clauses, stable finding IDs and multiple rule matches, but it does not understand full contractual context or conversation history.
 - “With scope basis” is the share of parsed messages for which at least one configured rule found a related scope clause. It is not a percentage of contractual compliance.
 - Direct API integrations, shared workspaces and project switching remain outside this pilot slice.

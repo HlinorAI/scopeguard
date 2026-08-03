@@ -147,12 +147,12 @@ export function validateSources(sources: SourceDocument[]): SourceValidation {
   const messageSources = sources.filter((source) => source.kind === 'messages')
   const unknownSources = sources.filter((source) => source.kind === 'unknown')
 
-  if (!scopeSources.length) errors.push('Add at least one scope document (SOW, contract or brief).')
+  if (!scopeSources.length) errors.push('Add at least one scope source (SOW, contract, brief or initial order email). If the agreed scope is in an email, classify that source as Scope document in the source list.')
   if (!messageSources.length) errors.push('Add at least one communication export from Slack, email or WhatsApp.')
   if (unknownSources.length) warnings.push(`Unclassified sources will not be analysed: ${unknownSources.map((source) => source.name).join(', ')}.`)
 
   if (scopeSources.length && !scopeSources.some((source) => extractScopeItems(source.id, source.content).length)) {
-    errors.push('The scope document has no readable bullet points. Use headings with bullet or numbered deliverables.')
+    errors.push('The scope source has no readable deliverables. Use bullet points or a clear initial order email with the requested work.')
   }
   if (messageSources.length && !messageSources.some((source) => extractMessages(source).length)) {
     errors.push('The communication export has no readable messages. Check the export format or reclassify the source.')
@@ -184,11 +184,19 @@ export function analyzeSources(sources: SourceDocument[]): AnalysisResult {
 }
 
 function inferKind(name: string, content: string): SourceKind {
-  const lowerName = name.toLowerCase()
-  const scopeNameSignal = /(^|[-_.])(sow|scope|contract|agreement|brief|proposal)([-_.]|$)/.test(lowerName)
-  const scopeContentSignal = /(^|\n)\s*#{1,6}\s*(included|excluded|scope|deliverables|assumptions|requirements)/im.test(content)
+  const lowerName = name.toLowerCase().replace(/\s+/g, '-')
+  const normalizedContent = normalizeDocumentText(content)
+  const replyOrCancellationNameSignal = /(^|[-_.])(re|reply|fwd|forward|thread|cancel|cancellation)([-_.]|$)/.test(lowerName)
+  const scopeNameSignal = !replyOrCancellationNameSignal
+    && /(^|[-_.])(sow|scope|contract|agreement|brief|proposal|order|request|intake|kickoff|requirements?)([-_.]|$)/.test(lowerName)
+  const scopeContentSignal = !replyOrCancellationNameSignal && (
+    /(^|\n)\s*#{1,6}\s*(included|excluded|scope|deliverables|assumptions|requirements)/im.test(normalizedContent)
+      || /\b(new order|order number|shipping cost|total cost|deliverables?)\b/i.test(normalizedContent)
+  )
   const messageNameSignal = /slack|email|message|messenger|telegram|whatsapp|facebook|meta|thread|chat|linear|jira/.test(lowerName)
-  const messageContentSignal = looksLikeMessageExport(content) || /(^|\n)\s*(from|subject|date):/im.test(content)
+  const messageContentSignal = looksLikeMessageExport(content)
+    || /(^|\n)\s*(from|subject|date):/im.test(content)
+    || /^\s*(?:\[)?\d{4}[-/.]\d{1,2}[-/.]\d{1,2}[^|]*\|\s*[^|]+\|\s*.+$/m.test(content)
 
   if (scopeNameSignal || scopeContentSignal) return 'scope'
   if (messageNameSignal || messageContentSignal || detectPilotChannel(name, content)) return 'messages'
@@ -217,10 +225,12 @@ function getFormat(name: string): SourceFormat {
 }
 
 function extractScopeItems(sourceId: string, content: string): ScopeItem[] {
+  const normalizedContent = normalizeDocumentText(content)
+  const richText = isRichTextDocument(content)
   let currentSection = 'Scope'
   const occurrences = new Map<string, number>()
 
-  return content.split(/\r?\n/).flatMap((line) => {
+  const bulletItems = normalizedContent.split(/\r?\n/).flatMap((line) => {
     const trimmed = line.trim()
     if (!trimmed) return []
     const heading = trimmed.match(/^#{1,6}\s*(.+)$/)
@@ -241,6 +251,108 @@ function extractScopeItems(sourceId: string, content: string): ScopeItem[] {
       excluded: /excluded|no |not included|out of scope/i.test(currentSection) || /^(no |not included|excluded)/i.test(text),
     }]
   })
+
+  if (bulletItems.length) return bulletItems
+
+  const proseLines = richText
+    ? normalizedContent.split(/\r?\n/)
+    : normalizedContent.replace(/\r\n/g, '\n').split(/\n\s*\n/).flatMap((block) => block.split(/(?<=[.!?])\s+(?=[A-Z0-9])/))
+
+  return proseLines
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter((line) => line.length >= (richText ? 5 : 16))
+    .filter((line) => !/^(title|quantity|weight|cost)$/i.test(line))
+    .filter((line) => !/^(from|to|cc|bcc|subject|date|reply-to|mime-version|content-type|content-transfer-encoding|message-id):/i.test(line))
+    .filter((line) => !/^[-=]{3,}$/.test(line))
+    .filter((line) => !/^>/.test(line))
+    .filter((line) => !/^(hi|hello|dear|thanks|thank you|best|regards)[,!]?$/i.test(line))
+    .filter((line) => !/@/.test(line))
+    .map((text, index) => {
+      const key = normalizeForMatching(text)
+      const occurrence = occurrences.get(key) ?? 0
+      occurrences.set(key, occurrence + 1)
+      return {
+        id: `${sourceId}-scope-${stableHash(`${key}|${occurrence}|prose`)}`,
+        section: 'Initial order',
+        text,
+        excluded: /excluded|no |not included|out of scope/i.test(text),
+      }
+    })
+}
+
+function isRichTextDocument(content: string): boolean {
+  return /^\s*\{\\rtf/i.test(content)
+}
+
+function normalizeDocumentText(content: string): string {
+  if (!isRichTextDocument(content)) return content
+
+  const destinationWords = new Set([
+    'fonttbl', 'colortbl', 'stylesheet', 'info', 'generator', 'pict', 'object', 'filetbl',
+    'header', 'footer', 'listtable', 'listoverridetable', 'themedata', 'xmlnstbl', 'datastore',
+  ])
+  const output: string[] = []
+  const stack: boolean[] = []
+  let skipGroup = false
+  let unicodeFallback = 1
+  let skipFallback = 0
+
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index]
+    if (character === '{') {
+      stack.push(skipGroup)
+      continue
+    }
+    if (character === '}') {
+      skipGroup = stack.pop() ?? false
+      continue
+    }
+    if (character !== '\\') {
+      if (skipFallback > 0) {
+        skipFallback -= 1
+      } else if (!skipGroup) {
+        output.push(character)
+      }
+      continue
+    }
+
+    const next = content[index + 1]
+    if (next === '\\' || next === '{' || next === '}' || next === '~' || next === '-' || next === '_') {
+      if (!skipGroup && skipFallback === 0) output.push(next === '~' ? ' ' : next)
+      index += 1
+      continue
+    }
+    if (next === "'") {
+      const hex = content.slice(index + 2, index + 4)
+      if (/^[0-9a-f]{2}$/i.test(hex)) {
+        if (!skipGroup && skipFallback === 0) output.push(String.fromCharCode(Number.parseInt(hex, 16)))
+        index += 3
+        continue
+      }
+    }
+
+    const control = content.slice(index + 1).match(/^([a-z]+)(-?\d+)? ?/i)
+    if (!control) {
+      if (next === '*') skipGroup = true
+      index += 1
+      continue
+    }
+
+    const word = control[1].toLowerCase()
+    const parameter = control[2] ? Number(control[2]) : undefined
+    index += control[0].length
+    if (destinationWords.has(word)) skipGroup = true
+    if (word === 'uc' && parameter !== undefined) unicodeFallback = Math.max(0, parameter)
+    if (word === 'u' && parameter !== undefined) {
+      const codePoint = parameter < 0 ? parameter + 65536 : parameter
+      if (!skipGroup) output.push(String.fromCharCode(codePoint))
+      skipFallback = unicodeFallback
+    }
+    if (!skipGroup && ['par', 'line', 'cell', 'row'].includes(word)) output.push('\n')
+    if (!skipGroup && word === 'tab') output.push('\t')
+  }
+
+  return output.join('').replace(/\u00a0/g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
 function extractMessages(source: SourceDocument): MessageRecord[] {
