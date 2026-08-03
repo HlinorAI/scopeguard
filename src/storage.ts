@@ -1,9 +1,9 @@
 import type { AnalysisResult, Finding, SourceDocument } from './analysis'
 
-const storageKey = 'scopeguard-workspace-v2'
+const storageKey = 'scopeguard-workspace-v3'
 
 export type PersistedWorkspace = {
-  version: 2
+  version: 3
   projectName: string
   sources: SourceDocument[]
   findings: Finding[]
@@ -27,7 +27,7 @@ export function loadWorkspace(): PersistedWorkspace | null {
 export function saveWorkspace(workspace: Omit<PersistedWorkspace, 'version' | 'savedAt'>): string | null {
   const savedAt = new Date().toISOString()
   try {
-    window.localStorage.setItem(storageKey, JSON.stringify({ ...workspace, version: 2, savedAt }))
+    window.localStorage.setItem(storageKey, JSON.stringify({ ...workspace, version: 3, savedAt }))
     return savedAt
   } catch {
     return null
@@ -37,7 +37,7 @@ export function saveWorkspace(workspace: Omit<PersistedWorkspace, 'version' | 's
 function isPersistedWorkspace(value: unknown): value is PersistedWorkspace {
   if (!value || typeof value !== 'object') return false
   const record = value as Record<string, unknown>
-  return record.version === 2
+  return record.version === 3
     && typeof record.projectName === 'string'
     && Array.isArray(record.sources)
     && Array.isArray(record.findings)

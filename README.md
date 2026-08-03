@@ -184,7 +184,7 @@ Every finding contains:
 - severity and confidence;
 - an estimated hour range.
 
-Use the filters to focus on **All findings**, **High risk** or **Unreviewed**. Open **Review finding** to add an optional note and make a decision.
+Use the filters to separate **Scope drift**, **Commercial risks**, **High risk** and **Unreviewed** items. A cancellation or payment signal is not a scope verdict; it is a follow-up queue for finance or sales. Open **Review finding** to add an optional note and make a decision.
 
 ### 6. Decide what happens next
 

@@ -197,4 +197,34 @@ describe('scope analysis', () => {
 
     expect(source.kind).toBe('messages')
   })
+
+  it('reports commercial risks separately from scope drift', () => {
+    const result = analyzeSources([
+      demoSources[0],
+      {
+        id: 'order-thread',
+        name: 'order-thread.eml',
+        kind: 'messages' as const,
+        format: 'eml' as const,
+        channel: 'gmail' as const,
+        content: [
+          'From: seller@example.com',
+          'Subject: RE: order cancellation',
+          'Date: Sun, 02 Aug 2026',
+          '',
+          'The item will be back in stock in November. I may wait a few months.',
+        ].join('\n'),
+      },
+    ])
+
+    expect(result.findings.filter((finding) => finding.category === 'scope_drift')).toHaveLength(0)
+    expect(result.commercialRiskCount).toBe(3)
+    expect(result.scopeCoverage).toBe(0)
+    expect(result.findings.map((finding) => finding.type)).toEqual([
+      'ORDER CANCELLATION',
+      'AVAILABILITY RISK',
+      'CUSTOMER DELAY',
+    ])
+    expect(result.hoursAtRisk).toBe('0h')
+  })
 })

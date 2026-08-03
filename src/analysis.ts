@@ -6,6 +6,8 @@ import type { ConnectorMessage, MessageRole, PilotChannel } from './connectors'
 export type SourceKind = 'scope' | 'messages' | 'unknown'
 export type SourceFormat = 'txt' | 'md' | 'eml' | 'json' | 'pdf' | 'docx' | 'unknown'
 export type ScopeMatch = 'included' | 'excluded' | 'ambiguous' | 'none'
+export type FindingCategory = 'scope_drift' | 'commercial_risk'
+export type CommercialRiskKind = 'cancellation' | 'payment_risk' | 'availability_risk' | 'customer_delay'
 
 export type SourceDocument = {
   id: string
@@ -18,6 +20,8 @@ export type SourceDocument = {
 
 export type Finding = {
   id: string
+  category: FindingCategory
+  riskKind?: CommercialRiskKind
   type: string
   title: string
   excerpt: string
@@ -38,6 +42,7 @@ export type AnalysisResult = {
   messagesWithScopeBasis: number
   scopeCoverage: number
   hoursAtRisk: string
+  commercialRiskCount: number
   unsupportedSources: string[]
 }
 
@@ -63,9 +68,11 @@ type MessageRecord = {
 
 type RuleConfig = {
   id: string
+  category: FindingCategory
+  riskKind?: CommercialRiskKind
   type: string
   pattern: string
-  titleStyle: 'subject_not_in_scope' | 'changes_expectation' | 'extra_revision' | 'unpriced_commitment'
+  titleStyle: 'subject_not_in_scope' | 'changes_expectation' | 'extra_revision' | 'unpriced_commitment' | 'commercial_risk'
   severity: Finding['severity']
   confidence: number
   minHours: number
@@ -167,9 +174,11 @@ export function analyzeSources(sources: SourceDocument[]): AnalysisResult {
   const scopeItems = scopeSources.flatMap((source) => extractScopeItems(source.id, source.content))
   const messages = messageSources.flatMap((source) => extractMessages(source))
   const findings = messages.flatMap((message) => createFindings(message, scopeItems))
-  const totalMin = findings.reduce((sum, finding) => sum + parseHours(finding.hours)[0], 0)
-  const totalMax = findings.reduce((sum, finding) => sum + parseHours(finding.hours)[1], 0)
-  const messagesWithScopeBasis = messages.filter((message) => rules.some((rule) => rule.pattern.test(message.text) && findScopeBasis(rule, message.text, scopeItems).status !== 'none')).length
+  const scopeFindings = findings.filter((finding) => finding.category === 'scope_drift')
+  const totalMin = scopeFindings.reduce((sum, finding) => sum + parseHours(finding.hours)[0], 0)
+  const totalMax = scopeFindings.reduce((sum, finding) => sum + parseHours(finding.hours)[1], 0)
+  const scopeRules = rules.filter((rule) => rule.category === 'scope_drift')
+  const messagesWithScopeBasis = messages.filter((message) => scopeRules.some((rule) => rule.pattern.test(message.text) && findScopeBasis(rule, message.text, scopeItems).status !== 'none')).length
   const coverage = messages.length === 0 ? 0 : Math.round((messagesWithScopeBasis / messages.length) * 100)
 
   return {
@@ -178,7 +187,8 @@ export function analyzeSources(sources: SourceDocument[]): AnalysisResult {
     messagesCompared: messages.length,
     messagesWithScopeBasis,
     scopeCoverage: coverage,
-    hoursAtRisk: findings.length ? `${totalMin}–${totalMax}h` : '0h',
+    hoursAtRisk: scopeFindings.length ? `${totalMin}–${totalMax}h` : '0h',
+    commercialRiskCount: findings.filter((finding) => finding.category === 'commercial_risk').length,
     unsupportedSources: sources.filter((source) => source.kind === 'unknown').map((source) => source.name),
   }
 }
@@ -380,9 +390,14 @@ function normalizeMessage(source: SourceDocument, message: ConnectorMessage, ind
 function createFindings(message: MessageRecord, scopeItems: ScopeItem[]): Finding[] {
   return rules.flatMap((rule) => {
     if (!rule.pattern.test(message.text)) return []
-    if (rule.id === 'unpriced_commitment' && message.role === 'client') return []
-    if (isNegatedSignal(rule, message.text)) return []
+    if (rule.category === 'scope_drift') {
+      if (rule.id === 'unpriced_commitment' && message.role === 'client') return []
+      if (isNegatedSignal(rule, message.text)) return []
+    } else if (isNegatedCommercialSignal(rule, message.text)) {
+      return []
+    }
 
+    if (rule.category === 'commercial_risk') return [createCommercialFinding(rule, message)]
     const scopeMatch = findScopeBasis(rule, message.text, scopeItems)
     if (rule.id === 'new_deliverable' && scopeMatch.status === 'included') return []
 
@@ -390,9 +405,10 @@ function createFindings(message: MessageRecord, scopeItems: ScopeItem[]): Findin
     const severity = adjustedSeverity(rule, scopeMatch.status)
     return [{
       id: `SG-${stableHash(`${message.id}|${rule.id}|${normalizeForMatching(message.text)}`)}`,
+      category: 'scope_drift',
       type: rule.type,
       title: titleFromRule(rule.titleStyle, message.text),
-      excerpt: `“${message.text}”`,
+      excerpt: findingExcerpt(rule, message.text),
       source: message.author ? `${message.source} · ${message.author}` : message.source,
       scope: scopeMatch.label,
       scopeMatch: scopeMatch.status,
@@ -403,6 +419,61 @@ function createFindings(message: MessageRecord, scopeItems: ScopeItem[]): Findin
       decision: 'pending',
     }]
   })
+}
+
+function createCommercialFinding(rule: Rule, message: MessageRecord): Finding {
+  const riskKind = rule.riskKind ?? 'customer_delay'
+  return {
+    id: `SG-${stableHash(`${message.id}|${rule.id}|${normalizeForMatching(message.text)}`)}`,
+    category: 'commercial_risk',
+    riskKind,
+    type: rule.type,
+    title: commercialRiskTitle(riskKind),
+    excerpt: findingExcerpt(rule, message.text),
+    source: message.author ? `${message.source} · ${message.author}` : message.source,
+    scope: 'Commercial signal · Not a scope clause',
+    scopeMatch: 'none',
+    hours: '—',
+    confidence: rule.confidence,
+    severity: rule.severity,
+    reviewed: false,
+    decision: 'pending',
+  }
+}
+
+function commercialRiskTitle(kind: CommercialRiskKind): string {
+  if (kind === 'cancellation') return 'Order appears cancelled or paused'
+  if (kind === 'payment_risk') return 'Payment status may block the order'
+  if (kind === 'availability_risk') return 'Product availability may block delivery'
+  return 'Customer may be delaying the order'
+}
+
+function findingExcerpt(rule: Rule, text: string): string {
+  const match = rule.pattern.exec(text)
+  const matchIndex = match?.index ?? 0
+  const radiusBefore = rule.category === 'commercial_risk' ? 60 : 120
+  const radiusAfter = rule.category === 'commercial_risk' ? 140 : 220
+  const start = Math.max(0, matchIndex - radiusBefore)
+  const end = Math.min(text.length, matchIndex + (match?.[0].length ?? 0) + radiusAfter)
+  const prefix = start > 0 ? '…' : ''
+  const suffix = end < text.length ? '…' : ''
+  const excerpt = sanitizeEvidence(text.slice(start, end))
+  return `“${prefix}${excerpt}${suffix}”`
+}
+
+function sanitizeEvidence(value: string): string {
+  return value
+    .replace(/https?:\/\/\S+/gi, '[link]')
+    .replace(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi, '[email]')
+    .replace(/(?:\+?\d[\d\s().-]{7,}\d)/g, '[phone]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 360)
+}
+
+function isNegatedCommercialSignal(rule: Rule, text: string): boolean {
+  if (rule.riskKind !== 'cancellation') return false
+  return /\b(?:not|never|no)\s+cancell?ed?\b/i.test(text)
 }
 
 function findScopeBasis(rule: Rule, text: string, scopeItems: ScopeItem[]): { status: ScopeMatch; label: string } {
@@ -463,6 +534,7 @@ function titleFromRule(style: RuleConfig['titleStyle'], text: string): string {
   if (style === 'subject_not_in_scope') return `${extractSubject(text)} is not in the agreed scope`
   if (style === 'changes_expectation') return `${extractSubject(text)} changes the delivery expectation`
   if (style === 'extra_revision') return 'An additional revision round was requested'
+  if (style === 'commercial_risk') return 'A commercial risk signal was detected'
   return 'A delivery commitment appears without a matching price'
 }
 
@@ -482,9 +554,11 @@ function loadRules(text: string): Rule[] {
 
 function isRuleConfig(value: Record<string, unknown>): value is Record<string, unknown> & RuleConfig {
   return typeof value.id === 'string'
+    && ['scope_drift', 'commercial_risk'].includes(String(value.category))
     && typeof value.type === 'string'
     && typeof value.pattern === 'string'
     && typeof value.titleStyle === 'string'
+    && (value.category !== 'commercial_risk' || ['cancellation', 'payment_risk', 'availability_risk', 'customer_delay'].includes(String(value.riskKind)))
     && ['high', 'medium', 'low'].includes(String(value.severity))
     && typeof value.confidence === 'number'
     && typeof value.minHours === 'number'

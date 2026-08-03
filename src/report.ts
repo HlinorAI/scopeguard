@@ -16,6 +16,7 @@ export function buildReviewReport(projectName: string, sources: SourceDocument[]
     `- Messages compared: ${analysis.messagesCompared}`,
     `- Messages with scope basis: ${analysis.messagesWithScopeBasis ?? 0}/${analysis.messagesCompared} (${analysis.scopeCoverage}%)`,
     `- Estimated hours at risk: ${analysis.hoursAtRisk}`,
+    `- Commercial risks: ${analysis.commercialRiskCount}`,
     `- Findings: ${findings.length}`,
     `- Reviewed: ${reviewed.length}`,
     `- Change requests: ${changeRequests.length}`,
@@ -31,6 +32,7 @@ export function buildReviewReport(projectName: string, sources: SourceDocument[]
       `### ${finding.id} — ${finding.title}`,
       '',
       `- Decision: ${decisionText(finding)}`,
+      `- Category: ${finding.category === 'commercial_risk' ? 'Commercial risk' : 'Scope drift'}`,
       `- Severity: ${finding.severity}`,
       `- Estimated exposure: ${finding.hours}`,
       `- Rule signal: ${finding.confidence}%`,
@@ -62,7 +64,9 @@ export function buildChangeRequest(finding: Finding, projectName: string, note?:
     '',
     '## Requested action',
     '',
-    'Confirm scope, price and delivery impact before accepting the work.',
+    finding.category === 'commercial_risk'
+      ? 'Confirm order status, owner and next action before continuing work.'
+      : 'Confirm scope, price and delivery impact before accepting the work.',
     ...(note ? ['', '## Review note', '', note] : []),
   ].join('\n')
 }

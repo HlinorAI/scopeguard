@@ -1,5 +1,6 @@
 rules:
   - id: new_deliverable
+    category: scope_drift
     type: NEW DELIVERABLE
     pattern: "dashboard|partner portal|mobile app|new page|additional integration|new integration"
     titleStyle: subject_not_in_scope
@@ -14,6 +15,7 @@ rules:
       - integration
 
   - id: changed_acceptance_criteria
+    category: scope_drift
     type: ACCEPTANCE CRITERIA
     pattern: "real[- ]?time|instantly|without (refreshing|reloading)|pixel[- ]perfect|live updates"
     titleStyle: changes_expectation
@@ -28,6 +30,7 @@ rules:
       - criteria
 
   - id: extra_revision
+    category: scope_drift
     type: EXTRA REVISION
     pattern: "one more pass|one last pass|another revision|fourth revision|additional revision|extra round"
     titleStyle: extra_revision
@@ -40,6 +43,7 @@ rules:
       - round
 
   - id: unpriced_commitment
+    category: scope_drift
     type: UNPRICED COMMITMENT
     pattern: "\\b(?:we will|we'll|we can|make sure|promise to)\\b.{0,100}\\b(?:build|create|add|implement|track(?:ed|ing)?|deliver|set up|launch|support|configure|ship)\\b"
     titleStyle: unpriced_commitment
@@ -54,3 +58,51 @@ rules:
       - funnel
       - commitment
       - price
+
+  - id: order_cancellation
+    category: commercial_risk
+    riskKind: cancellation
+    type: ORDER CANCELLATION
+    pattern: "cancell?ation|cancell?ed|canceled|won't proceed|will not proceed|order is off|order is no longer going ahead"
+    titleStyle: commercial_risk
+    severity: high
+    confidence: 96
+    minHours: 0
+    maxHours: 0
+    scopeTerms: []
+
+  - id: payment_risk
+    category: commercial_risk
+    riskKind: payment_risk
+    type: PAYMENT RISK
+    pattern: "(?:payment|pay|invoice).{0,80}(?:due|overdue|pending|not received|not made|haven't|hasn't)|when do you plan to make the payment"
+    titleStyle: commercial_risk
+    severity: high
+    confidence: 88
+    minHours: 0
+    maxHours: 0
+    scopeTerms: []
+
+  - id: availability_risk
+    category: commercial_risk
+    riskKind: availability_risk
+    type: AVAILABILITY RISK
+    pattern: "out of stock|back in stock|restock|backorder|not available|no container shipments?|no shipments|production.{0,40}(?:resumed|stopped)|available in (?:November|December|January)|stock available"
+    titleStyle: commercial_risk
+    severity: high
+    confidence: 91
+    minHours: 0
+    maxHours: 0
+    scopeTerms: []
+
+  - id: customer_delay
+    category: commercial_risk
+    riskKind: customer_delay
+    type: CUSTOMER DELAY
+    pattern: "wait a few months|wait until|postpone|put .* on hold|hold off|not ready|delay(?:ed)?|maybe later|in a few months"
+    titleStyle: commercial_risk
+    severity: medium
+    confidence: 84
+    minHours: 0
+    maxHours: 0
+    scopeTerms: []
