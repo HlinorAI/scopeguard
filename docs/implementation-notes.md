@@ -9,9 +9,9 @@ The current slice is a responsive React/Vite local-first review workspace, a det
 - No external UI library yet; the surface is small and the visual language is custom.
 - Sources are normalized into `SourceDocument` records with a scope/messages/unknown kind and an explicit format.
 - TXT/MD, RTF-in-MD, EML and common Telegram, WhatsApp, Facebook Messenger and Slack JSON exports are parsed locally in `src/analysis.ts`.
-- The analyzer runs deterministic rules for new deliverables, acceptance criteria, extra revisions and unpriced commitments.
+- The analyzer runs deterministic rules for new deliverables, acceptance criteria, extra revisions, unpriced commitments and commercial risks such as cancellation, payment, availability and customer delay.
 - Rule patterns, rule signal strength, severity and hour ranges are configured in `src/rules.yaml` and validated at build time.
-- “Run analysis” now recomputes findings, the percentage of messages with a scope basis, message count and preliminary exposure from the current sources.
+- “Run analysis” now recomputes findings, commercial-risk count, the percentage of messages with a scope basis, message count and preliminary exposure from the current sources.
 - PDF/DOCX are rejected with an explicit next-adapter message instead of pretending they were parsed. CSV/XLSX and CRM/ERP records are deferred to private add-ons; Slack/Gmail/WhatsApp connectors are the next open-source pilot slice.
 - Findings are explicitly evidence-backed and use “potential” language.
 - A reviewer can add a note, mark a finding in scope, create a change request decision, reopen it, and use the unreviewed filter as a queue.
@@ -22,6 +22,7 @@ The current slice is a responsive React/Vite local-first review workspace, a det
 - The pilot visual system remains the original warm paper/ink/orange workspace design; the page header and demo banner have explicit layout styles so pilot-state additions do not fall back to browser defaults.
 - An initial order email can be used as the scope source: order/request-style filenames are scope candidates, and manually reclassified prose emails produce scope items without requiring Markdown bullets.
 - RTF order exports saved with an `.md` extension are normalized locally; cancellation/reply email filenames stay communication candidates even when their quoted history mentions order totals.
+- Commercial risks are intentionally separate from scope drift: they do not add fake delivery hours and use a follow-up action instead of a scope clause.
 
 ## Next technical slice
 

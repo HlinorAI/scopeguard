@@ -171,7 +171,21 @@ function selectEmailText(contentType: string | undefined, transferEncoding: stri
 
 function decodeTransferEncoding(value: string, encoding: string | undefined): string {
   if (/quoted-printable/i.test(encoding ?? '')) {
-    return value.replace(/=\r?\n/g, '').replace(/=([0-9A-F]{2})/gi, (_, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)))
+    const bytes: number[] = []
+    const normalized = value.replace(/=\r?\n/g, '')
+    for (let index = 0; index < normalized.length; index += 1) {
+      if (normalized[index] === '=' && /^[0-9A-F]{2}$/i.test(normalized.slice(index + 1, index + 3))) {
+        bytes.push(Number.parseInt(normalized.slice(index + 1, index + 3), 16))
+        index += 2
+      } else {
+        bytes.push(normalized.charCodeAt(index))
+      }
+    }
+    try {
+      return new TextDecoder('utf-8').decode(Uint8Array.from(bytes))
+    } catch {
+      return String.fromCharCode(...bytes)
+    }
   }
   if (/base64/i.test(encoding ?? '')) {
     try {

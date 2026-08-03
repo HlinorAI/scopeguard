@@ -115,6 +115,8 @@ Each finding supports:
 Available filters:
 
 - all findings;
+- scope drift only;
+- commercial risks only;
 - high risk;
 - unreviewed only.
 

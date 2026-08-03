@@ -17,11 +17,13 @@ const analysis: AnalysisResult = {
   messagesWithScopeBasis: 1,
   scopeCoverage: 100,
   hoursAtRisk: '8–12h',
+  commercialRiskCount: 0,
   unsupportedSources: [],
 }
 
 const finding: Finding = {
   id: 'SG-001',
+  category: 'scope_drift',
   type: 'NEW DELIVERABLE',
   title: 'Dashboard is not in the agreed scope',
   excerpt: '“Can we add a dashboard?”',

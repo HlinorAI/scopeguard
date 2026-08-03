@@ -12,7 +12,7 @@ const persistedWorkspace = loadWorkspace()
 
 function App() {
   const [activeProject, setActiveProject] = useState(persistedWorkspace?.projectName ?? 'Acme launch site')
-  const [filter, setFilter] = useState<'all' | 'high' | 'unreviewed'>('all')
+  const [filter, setFilter] = useState<'all' | 'scope' | 'commercial' | 'high' | 'unreviewed'>('all')
   const [findings, setFindings] = useState<Finding[]>(persistedWorkspace?.findings ?? initialAnalysis.findings)
   const [sources, setSources] = useState<SourceDocument[]>(persistedWorkspace?.sources ?? demoSources)
   const [analysis, setAnalysis] = useState(persistedWorkspace?.analysis ?? initialAnalysis)
@@ -39,6 +39,8 @@ function App() {
 
   const visibleFindings = useMemo(() => {
     if (!analysisReady) return []
+    if (filter === 'scope') return findings.filter((finding) => finding.category === 'scope_drift')
+    if (filter === 'commercial') return findings.filter((finding) => finding.category === 'commercial_risk')
     if (filter === 'high') return findings.filter((finding) => finding.severity === 'high')
     if (filter === 'unreviewed') return findings.filter((finding) => !finding.reviewed)
     return findings
@@ -208,12 +210,12 @@ function App() {
 
           <section className="status-strip" aria-label="Analysis status">
             <div className="status-intro"><span className={`status-icon ${analysisReady ? 'ready' : ''}`}>{analysisReady ? '✓' : '…'}</span><div><strong>{analysisReady ? 'Analysis complete' : sources.length ? 'Ready to analyse' : 'Add project sources'}</strong><span>{analysisReady ? `Compared ${analysis.messagesCompared} messages against ${analysis.scopeItemsCount} scope items` : `${sources.length} source${sources.length === 1 ? '' : 's'} loaded · Run analysis after adding both source types`}</span></div></div>
-            <div className="status-metrics"><div><span>With scope basis</span><strong>{analysisReady ? `${analysis.scopeCoverage}%` : '—'}</strong></div><div><span>Preliminary exposure</span><strong className="orange-text">{analysisReady ? analysis.hoursAtRisk : '—'}</strong></div><div><span>Unreviewed</span><strong>{analysisReady ? findings.filter((finding) => !finding.reviewed).length : '—'}</strong></div></div>
+            <div className="status-metrics"><div><span>With scope basis</span><strong>{analysisReady ? `${analysis.scopeCoverage}%` : '—'}</strong></div><div><span>Preliminary exposure</span><strong className="orange-text">{analysisReady ? analysis.hoursAtRisk : '—'}</strong></div><div><span>Commercial risks</span><strong className={analysisReady && analysis.commercialRiskCount > 0 ? 'orange-text' : ''}>{analysisReady ? analysis.commercialRiskCount : '—'}</strong></div><div><span>Unreviewed</span><strong>{analysisReady ? findings.filter((finding) => !finding.reviewed).length : '—'}</strong></div></div>
           </section>
 
           <section className="workspace-grid">
             <div className="evidence-column" data-tour="findings">
-              <div className="section-heading"><div><p className="eyebrow">EVIDENCE REVIEW</p><h2>Potential scope drift</h2></div><div className="filter-tabs" role="tablist" aria-label="Finding filters">{(['all', 'high', 'unreviewed'] as const).map((item) => <button aria-selected={filter === item} className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} role="tab" type="button">{item === 'all' ? 'All findings' : item === 'high' ? 'High risk' : 'Unreviewed'}</button>)}</div></div>
+              <div className="section-heading"><div><p className="eyebrow">EVIDENCE REVIEW</p><h2>Findings and risks</h2></div><div className="filter-tabs" role="tablist" aria-label="Finding filters">{(['all', 'scope', 'commercial', 'high', 'unreviewed'] as const).map((item) => <button aria-selected={filter === item} className={filter === item ? 'is-active' : ''} key={item} onClick={() => setFilter(item)} role="tab" type="button">{item === 'all' ? 'All findings' : item === 'scope' ? 'Scope drift' : item === 'commercial' ? 'Commercial risks' : item === 'high' ? 'High risk' : 'Unreviewed'}</button>)}</div></div>
               <div className="finding-list">
                 {visibleFindings.map((finding) => <FindingCard
                   finding={finding}
@@ -225,7 +227,7 @@ function App() {
                   onOpenReview={openReview}
                   onReopen={reopenFinding}
                 />)}
-                {!visibleFindings.length && <div className="empty-state"><strong>{!analysisReady ? 'Sources changed — run analysis.' : findings.length ? 'Nothing waiting here.' : 'No potential scope drift found.'}</strong><span>{!analysisReady ? 'Previous findings are hidden until the current source set is analysed.' : findings.length ? 'Every finding in this view has been reviewed.' : 'Add another communication export if you want to check more conversations.'}</span></div>}
+                {!visibleFindings.length && <div className="empty-state"><strong>{!analysisReady ? 'Sources changed — run analysis.' : findings.length ? 'Nothing waiting here.' : filter === 'commercial' ? 'No commercial risks found.' : filter === 'scope' ? 'No scope drift found.' : 'No findings or risks found.'}</strong><span>{!analysisReady ? 'Previous findings are hidden until the current source set is analysed.' : findings.length ? 'Every finding in this view has been reviewed.' : 'Add another communication export if you want to check more conversations.'}</span></div>}
               </div>
             </div>
 
@@ -264,12 +266,12 @@ function FindingCard({
   onOpenReview: (id: string) => void
   onReopen: (id: string) => void
 }) {
-  return <article className={`finding-card ${finding.reviewed ? 'is-reviewed' : ''}`}>
+  return <article className={`finding-card ${finding.category === 'commercial_risk' ? 'commercial-risk-card' : ''} ${finding.reviewed ? 'is-reviewed' : ''}`}>
     <div className="finding-topline"><span className={`severity-dot ${finding.severity}`} /><span className="finding-type">{finding.type}</span><span className="finding-id">{finding.id}</span></div>
     <h3>{finding.title}</h3>
     <blockquote>{finding.excerpt}</blockquote>
-    <div className="finding-meta"><span><b>Source</b>{finding.source}</span><span><b>Scope basis</b>{finding.scope}</span></div>
-    <div className="finding-bottom"><div className="finding-estimate"><span>Preliminary exposure</span><strong>{finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% rule signal</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" data-tour="review-action" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
+    <div className="finding-meta"><span><b>Source</b>{finding.source}</span><span><b>{finding.category === 'commercial_risk' ? 'Signal' : 'Scope basis'}</b>{finding.scope}</span></div>
+    <div className="finding-bottom"><div className="finding-estimate"><span>{finding.category === 'commercial_risk' ? 'Next action' : 'Preliminary exposure'}</span><strong>{finding.category === 'commercial_risk' ? 'Follow up' : finding.hours}</strong><span className={`confidence ${finding.confidence > 90 ? 'strong' : ''}`}>{finding.confidence}% rule signal</span></div>{finding.reviewed ? <div className="review-state"><span className={`decision-badge ${finding.decision}`}>{decisionLabel(finding.decision)}</span><button className="reopen-button" onClick={() => onReopen(finding.id)} type="button">Reopen</button></div> : <button className="review-button" data-tour="review-action" onClick={() => onOpenReview(finding.id)} type="button">{isReviewing ? 'Close review' : 'Review finding →'}</button>}</div>
     {isReviewing && !finding.reviewed && <div className="review-panel"><label htmlFor={`review-note-${finding.id}`}>Decision note <span>optional</span></label><textarea id={`review-note-${finding.id}`} onChange={(event) => onNoteChange(event.target.value)} placeholder="Why should the team act on this finding?" value={note} /><div className="review-actions"><button className="in-scope-button" onClick={() => onDecide(finding.id, 'in_scope')} type="button">Mark in scope</button><button className="change-request-button" onClick={() => onDecide(finding.id, 'change_request')} type="button">Create change request <span>→</span></button></div></div>}
   </article>
 }
@@ -284,7 +286,7 @@ const tourSteps: TourStep[] = [
   { target: 'intro', title: 'Start with the scope', body: 'ScopeGuard compares what was agreed with what clients later ask for. Demo evidence is already loaded so you can see the workflow immediately.' },
   { target: 'sources', title: 'Add the source files', body: 'Upload one scope document and exports from Slack, Gmail or WhatsApp. In this pilot, files are parsed locally in the browser.' },
   { target: 'analysis', title: 'Run the analysis', body: 'When your sources are ready, click Run analysis. ScopeGuard highlights potential scope drift and estimates the exposure.' },
-  { target: 'findings', title: 'Read the evidence', body: 'Each finding includes the client quote, original source and scope basis. Start with High risk or Unreviewed.' },
+  { target: 'findings', title: 'Read the evidence', body: 'Scope drift and commercial risks are separated by filters. Each card includes the original source and the signal that needs review.' },
   { target: 'review-action', title: 'Make a decision', body: 'Open a finding, leave an optional note, then mark it In scope or Create change request.' },
   { target: 'privacy', title: 'Private by default', body: 'The open-source pilot processes files in the browser and sends no client content to an external API. Use the ? button any time to replay this tour.' },
 ]
