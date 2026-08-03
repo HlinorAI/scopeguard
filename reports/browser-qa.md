@@ -79,3 +79,10 @@ PASS for the local pilot slice. The application is ready for a controlled export
 - The source list showed both files, the status changed to `Ready to analyse`, and the analysis completed with one finding.
 - No console errors occurred during the full flow.
 - The onboarding dialog receives focus when opened and remains dismissible with `Escape`.
+
+## 2026-08-03 visual regression pass
+
+- Restored the missing desktop page layout rules for `.content-wrap`, `.page-intro`, headings, intro copy and action buttons.
+- Added the visual treatment for the `Demo data` status banner.
+- Verified the local desktop render at 1280 × 720 against the intended paper/ink/orange design system.
+- Console errors and warnings were empty after the fix.

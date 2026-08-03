@@ -19,6 +19,7 @@ The current slice is a responsive React/Vite local-first review workspace, a det
 - The current local workspace is persisted in browser storage under a versioned key, including sources, findings, analysis metrics, review notes and decisions. This is intentionally device-local and does not replace a shared backend.
 - Review reports and approved change requests can be exported as Markdown files without sending project data to an external service.
 - Pilot safeguards include a 10 MB source limit, required scope/message source validation, source reclassification and removal, stable finding IDs, basic negation and sender-role handling, included/excluded scope matching, and multipart email/plain-text Slack fallbacks.
+- The pilot visual system remains the original warm paper/ink/orange workspace design; the page header and demo banner have explicit layout styles so pilot-state additions do not fall back to browser defaults.
 
 ## Next technical slice
 
