@@ -8,6 +8,24 @@ The product is built around a simple question:
 
 > “Is this request already included in the agreement, or are we about to do extra work for free?”
 
+## In 30 seconds
+
+ScopeGuard compares your signed agreement with the message thread and flags potential scope drift - with evidence, before the work starts. Deterministic rules; a human always makes the final call. Runs in your browser: your files never leave the device.
+
+**Try the hosted pilot:** https://scopeguard.hlinor.com - no install, no account.
+
+Or run locally:
+
+```bash
+git clone https://github.com/HlinorAI/ScopeGuard.git
+cd ScopeGuard
+npm install
+npm run dev
+```
+
+Website: https://hlinor.com/open-source/scopeguard/
+
+
 ScopeGuard should eventually combine three kinds of evidence:
 
 1. **Agreement** — SOWs, contracts, proposals and briefs.
