@@ -19,3 +19,9 @@ Security maintenance (SCOPEGUARD-NPM-002): the three confirmed npm advisories
 are closed by targeted updates (nanoid 3.3.19, yaml 2.8.3, vitest 4.1.11 with
 its @vitest/* packages), with dependency floors raised in package.json so the
 safe minimums are protected. No behavioral or runtime-rule changes.
+
+## Mail Hub reference documentation (2026-10-04)
+
+Mail Hub reference documents distinguish private Operator intake from the public browser analyzer. The synthetic scope-drift regression uses existing JSON parsing, analysis rules and review reports; no live connector or production API was added.
+
+No publication, visibility change or production behavior change is included.

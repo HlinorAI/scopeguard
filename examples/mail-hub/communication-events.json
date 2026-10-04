@@ -1,0 +1,26 @@
+[
+  {
+    "schema_version": "1.0",
+    "event_id": "email:hub:1:message_123",
+    "source": "email",
+    "mailbox": 1,
+    "thread_id": "thread_example",
+    "message_id": 123,
+    "sequence": 1,
+    "timestamp": "2026-10-04T12:00:00Z",
+    "direction": "inbound",
+    "sender": "client@example.com",
+    "recipients": [
+      "team@example.com"
+    ],
+    "subject": "Additional request",
+    "text": "Can we also add a lightweight dashboard for partners before launch?",
+    "trust": "untrusted_external_content",
+    "deduplication_key": "1:message_123",
+    "attachment_metadata": [],
+    "source_freshness": {
+      "last_sync_at": "2026-10-04T12:05:00Z",
+      "sync_complete": true
+    }
+  }
+]
