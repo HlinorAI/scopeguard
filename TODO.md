@@ -8,3 +8,8 @@
 - [ ] Decide the pilot feedback loop for issue #9 (public repo funnel).
 - [ ] Consider lint tooling (none is configured today) once the current
       dependency-security pass is accepted.
+
+## Mail Hub reference documentation
+
+- [x] Verify case study, existing suite, applicable typecheck/build, links and sanitized evidence.
+- [ ] Owner review of local branch; external publication/merge requires a separate decision.

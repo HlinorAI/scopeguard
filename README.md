@@ -352,3 +352,11 @@ ScopeGuard is an early product prototype. The foundation is intentionally local-
 For the current product boundary, pilot plan and open-source/private add-on split, see [`docs/product-status.md`](docs/product-status.md).
 
 The repository is public under the [Apache License 2.0](LICENSE). Release `v0.2.0` contains the open-source export-based pilot foundation, hosted deployment adapter and first-run onboarding tour.
+
+## Reference integrations
+
+### Hlinor Mail Hub
+
+The separate ScopeGuard Operator consumes normalized communication events from Mail Hub without provider credentials. This public core includes an executable export-based scope-drift example.
+
+→ [Reference integration: email via Hlinor Mail Hub](docs/integrations/hlinor-mail-hub.md)

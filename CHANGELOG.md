@@ -16,3 +16,10 @@ All notable changes to this project will be documented in this file.
   typecheck/test/build pass, and the built worker answers synthetic
   GET/HEAD with 200, unknown paths with 404, disallowed methods with 405.
 - No behavioral, runtime-rule, or version changes in this update.
+
+## 2026-10-04
+
+### Added
+
+- Mail Hub reference documents distinguish private Operator intake from the public browser analyzer. The synthetic scope-drift regression uses existing JSON parsing, analysis rules and review reports; no live connector or production API was added.
+- Short README reference link with sanitized source evidence notes.
